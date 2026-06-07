@@ -1,0 +1,1515 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>All-in-One Fitness Tracker</title>
+  <style>
+:root {
+  --bg: #f6f7fb;
+  --panel: #ffffff;
+  --panel-strong: #f0f4ff;
+  --text: #1f2937;
+  --muted: #6b7280;
+  --border: #d9deea;
+  --accent: #3758f9;
+  --accent-dark: #243db5;
+  --danger: #c2410c;
+  --danger-bg: #fff1eb;
+  --shadow: 0 12px 35px rgba(23, 37, 84, 0.10);
+  --level-0: #f3f4f6;
+  --level-1: #dbeafe;
+  --level-2: #bfdbfe;
+  --level-3: #93c5fd;
+  --level-4: #60a5fa;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--text);
+  background: radial-gradient(circle at top left, #e8efff 0, transparent 34rem), var(--bg);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+.file-button {
+  border: 0;
+  border-radius: 0.85rem;
+  background: var(--accent);
+  color: #fff;
+  padding: 0.75rem 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 140ms ease, box-shadow 140ms ease, background 140ms ease;
+  box-shadow: 0 8px 18px rgba(55, 88, 249, 0.22);
+}
+
+button:hover,
+.file-button:hover {
+  transform: translateY(-1px);
+  background: var(--accent-dark);
+}
+
+button.secondary {
+  background: #eef2ff;
+  color: var(--accent-dark);
+  box-shadow: none;
+}
+
+button.danger {
+  background: var(--danger-bg);
+  color: var(--danger);
+  box-shadow: none;
+}
+
+button.icon-danger {
+  background: transparent;
+  box-shadow: none;
+  color: var(--danger);
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #fed7aa;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.site-header,
+.site-footer {
+  width: min(1280px, calc(100% - 2rem));
+  margin: 0 auto;
+}
+
+.site-header {
+  padding: 2rem 0 1.25rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5rem;
+  align-items: flex-end;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  font-size: clamp(2rem, 4vw, 3.6rem);
+  margin-bottom: 0.35rem;
+  letter-spacing: -0.05em;
+}
+
+h2 {
+  margin-bottom: 0.25rem;
+  letter-spacing: -0.03em;
+}
+
+h3 {
+  margin-bottom: 1rem;
+}
+
+.eyebrow {
+  color: var(--accent-dark);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.78rem;
+  margin-bottom: 0.25rem;
+}
+
+.subtitle,
+.muted,
+.site-footer {
+  color: var(--muted);
+}
+
+.db-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  justify-content: flex-end;
+}
+
+#uploadDbInput {
+  display: none;
+}
+
+.layout {
+  width: min(1280px, calc(100% - 2rem));
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(360px, 0.95fr) minmax(420px, 1.35fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.panel {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(217, 222, 234, 0.9);
+  border-radius: 1.5rem;
+  padding: 1.25rem;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(10px);
+}
+
+.calendar-panel {
+  position: sticky;
+  top: 1rem;
+}
+
+.calendar-topbar,
+.details-header,
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.calendar-topbar button {
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+}
+
+.toolbar {
+  margin: 1rem 0;
+  flex-wrap: wrap;
+}
+
+.segmented,
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.3rem;
+  border-radius: 1rem;
+  background: #eef2ff;
+}
+
+.segmented button,
+.tabs button {
+  background: transparent;
+  color: var(--accent-dark);
+  box-shadow: none;
+  padding: 0.55rem 0.8rem;
+}
+
+.segmented button.active,
+.tabs button.active {
+  background: #fff;
+  color: var(--text);
+  box-shadow: 0 4px 14px rgba(30, 41, 59, 0.10);
+}
+
+.legend {
+  min-height: 2rem;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.legend-swatch {
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 0.4rem;
+  border: 1px solid rgba(31, 41, 55, 0.08);
+}
+
+.calendar {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.weekday {
+  text-align: center;
+  font-size: 0.76rem;
+  color: var(--muted);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding-bottom: 0.35rem;
+}
+
+.day-cell {
+  min-height: 5.2rem;
+  border-radius: 1rem;
+  padding: 0.55rem;
+  border: 1px solid rgba(31, 41, 55, 0.08);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  color: var(--text);
+  background: var(--level-0);
+  transition: transform 140ms ease, box-shadow 140ms ease, outline 140ms ease;
+}
+
+.day-cell:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(30, 41, 59, 0.10);
+}
+
+.day-cell.empty {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.day-cell.today {
+  outline: 2px dashed var(--accent);
+  outline-offset: 2px;
+}
+
+.day-cell.selected {
+  outline: 3px solid var(--accent-dark);
+  outline-offset: 2px;
+}
+
+.day-number {
+  font-weight: 900;
+}
+
+.day-value {
+  font-size: 0.78rem;
+  color: rgba(31, 41, 55, 0.72);
+  font-weight: 700;
+}
+
+.level-0 { background: var(--level-0); }
+.level-1 { background: var(--level-1); }
+.level-2 { background: var(--level-2); }
+.level-3 { background: var(--level-3); }
+.level-4 { background: var(--level-4); }
+
+.status {
+  border-radius: 99px;
+  background: #ecfdf5;
+  color: #047857;
+  padding: 0.45rem 0.75rem;
+  font-weight: 800;
+  margin-bottom: 0;
+  white-space: nowrap;
+}
+
+.status.warn {
+  background: #fffbeb;
+  color: #b45309;
+}
+
+.summary-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.summary-card {
+  border-radius: 1rem;
+  border: 1px solid var(--border);
+  padding: 1rem;
+  background: var(--panel-strong);
+}
+
+.summary-card span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.82rem;
+  margin-bottom: 0.25rem;
+  font-weight: 700;
+}
+
+.summary-card strong {
+  font-size: 1.3rem;
+}
+
+.tabs {
+  margin: 1rem 0;
+}
+
+.tab-section {
+  display: none;
+}
+
+.tab-section.active {
+  display: block;
+}
+
+.grid-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+  align-items: end;
+  margin-bottom: 1.25rem;
+}
+
+label {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 0.8rem;
+  background: #fff;
+  color: var(--text);
+  padding: 0.72rem 0.8rem;
+  outline: none;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(55, 88, 249, 0.12);
+}
+
+.full-width {
+  grid-column: 1 / -1;
+}
+
+.grid-form button[type="submit"] {
+  justify-self: start;
+}
+
+.list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.empty-state {
+  color: var(--muted);
+  border: 1px dashed var(--border);
+  border-radius: 1rem;
+  padding: 1rem;
+  background: #fff;
+}
+
+.record {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  border: 1px solid var(--border);
+  background: #fff;
+  border-radius: 1rem;
+  padding: 0.9rem;
+}
+
+.record h4 {
+  margin: 0 0 0.25rem;
+}
+
+.record p {
+  margin-bottom: 0.2rem;
+  color: var(--muted);
+}
+
+.record-meta {
+  font-size: 0.9rem;
+}
+
+.site-footer {
+  padding: 1.5rem 0 2rem;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 960px) {
+  .site-header,
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .site-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .db-controls {
+    justify-content: flex-start;
+  }
+
+  .calendar-panel {
+    position: static;
+  }
+}
+
+@media (max-width: 640px) {
+  .layout,
+  .site-header,
+  .site-footer {
+    width: min(100% - 1rem, 1280px);
+  }
+
+  .panel {
+    padding: 1rem;
+    border-radius: 1rem;
+  }
+
+  .calendar {
+    gap: 0.28rem;
+  }
+
+  .day-cell {
+    min-height: 4.2rem;
+    border-radius: 0.75rem;
+    padding: 0.45rem;
+  }
+
+  .grid-form,
+  .summary-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div>
+      <p class="eyebrow">SQLite-backed personal tracker</p>
+      <h1>Diet, Health & Fitness Tracker</h1>
+      <p class="subtitle">Track daily nutrition, sleep, exercise, and reusable meals from one static web app.</p>
+    </div>
+    <div class="db-controls" aria-label="Database controls">
+      <button id="downloadDbBtn" type="button">Download SQLite DB</button>
+      <label class="file-button" for="uploadDbInput">Load SQLite DB</label>
+      <input id="uploadDbInput" type="file" accept=".sqlite,.db,.sqlite3,application/vnd.sqlite3,application/octet-stream" />
+      <button id="sampleDataBtn" type="button" class="secondary">Add sample data</button>
+      <button id="newDbBtn" type="button" class="danger">New blank DB</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="panel calendar-panel" aria-labelledby="calendarHeading">
+      <div class="calendar-topbar">
+        <button id="prevMonthBtn" type="button" aria-label="Previous month">&larr;</button>
+        <div>
+          <h2 id="calendarHeading">Calendar</h2>
+          <p id="monthLabel" class="muted"></p>
+        </div>
+        <button id="nextMonthBtn" type="button" aria-label="Next month">&rarr;</button>
+      </div>
+
+      <div class="toolbar">
+        <button id="todayBtn" type="button" class="secondary">Today</button>
+        <div class="segmented" role="group" aria-label="Calendar data layer">
+          <button class="view-btn active" type="button" data-view="nutrition">Nutrition</button>
+          <button class="view-btn" type="button" data-view="sleep">Sleep</button>
+          <button class="view-btn" type="button" data-view="exercise">Exercise</button>
+        </div>
+      </div>
+
+      <div id="legend" class="legend" aria-label="Calendar legend"></div>
+      <div id="calendar" class="calendar" aria-label="Monthly calendar"></div>
+    </section>
+
+    <section class="panel details-panel" aria-labelledby="selectedDateHeading">
+      <div class="details-header">
+        <div>
+          <p class="eyebrow">Selected day</p>
+          <h2 id="selectedDateHeading"></h2>
+        </div>
+        <p id="dbStatus" class="status">Loading SQLite...</p>
+      </div>
+
+      <div id="summaryCards" class="summary-cards"></div>
+
+      <div class="tabs" role="tablist" aria-label="Entry forms">
+        <button class="tab-btn active" type="button" data-tab="nutritionTab">Meals</button>
+        <button class="tab-btn" type="button" data-tab="sleepTab">Sleep</button>
+        <button class="tab-btn" type="button" data-tab="exerciseTab">Exercise</button>
+        <button class="tab-btn" type="button" data-tab="recipesTab">Recipes</button>
+      </div>
+
+      <section id="nutritionTab" class="tab-section active" aria-labelledby="nutritionHeading">
+        <h3 id="nutritionHeading">Add meal / nutrition</h3>
+        <form id="nutritionForm" class="grid-form">
+          <label>Meal type
+            <select id="mealType">
+              <option value="breakfast">Breakfast</option>
+              <option value="lunch">Lunch</option>
+              <option value="dinner">Dinner</option>
+              <option value="snack">Snack</option>
+              <option value="meal">Meal</option>
+            </select>
+          </label>
+          <label>Saved recipe/meal
+            <select id="recipeSelect">
+              <option value="">Custom entry</option>
+            </select>
+          </label>
+          <label>Custom name
+            <input id="nutritionName" type="text" placeholder="e.g. Turkey wrap" />
+          </label>
+          <label>Servings
+            <input id="servings" type="number" min="0.01" step="0.01" value="1" />
+          </label>
+          <label>Calories
+            <input id="mealCalories" type="number" min="0" step="1" value="0" />
+          </label>
+          <label>Protein (g)
+            <input id="mealProtein" type="number" min="0" step="0.1" value="0" />
+          </label>
+          <label>Fat (g)
+            <input id="mealFat" type="number" min="0" step="0.1" value="0" />
+          </label>
+          <label>Carbs (g)
+            <input id="mealCarbs" type="number" min="0" step="0.1" value="0" />
+          </label>
+          <label class="full-width">Notes
+            <textarea id="nutritionNotes" rows="2" placeholder="Optional"></textarea>
+          </label>
+          <button type="submit">Save meal</button>
+        </form>
+        <div id="nutritionList" class="list"></div>
+      </section>
+
+      <section id="sleepTab" class="tab-section" aria-labelledby="sleepHeading">
+        <h3 id="sleepHeading">Add / update sleep</h3>
+        <form id="sleepForm" class="grid-form">
+          <label>Hours slept
+            <input id="sleepHours" type="number" min="0" max="24" step="0.25" placeholder="7.5" required />
+          </label>
+          <label>Quality
+            <select id="sleepQuality">
+              <option value="">Not rated</option>
+              <option value="1">1 - Very poor</option>
+              <option value="2">2 - Poor</option>
+              <option value="3">3 - Okay</option>
+              <option value="4">4 - Good</option>
+              <option value="5">5 - Great</option>
+            </select>
+          </label>
+          <label class="full-width">Notes
+            <textarea id="sleepNotes" rows="2" placeholder="Optional"></textarea>
+          </label>
+          <button type="submit">Save sleep</button>
+        </form>
+        <div id="sleepList" class="list"></div>
+      </section>
+
+      <section id="exerciseTab" class="tab-section" aria-labelledby="exerciseHeading">
+        <h3 id="exerciseHeading">Add exercise</h3>
+        <form id="exerciseForm" class="grid-form">
+          <label>Exercise
+            <input id="exerciseName" type="text" placeholder="e.g. Bench press" required />
+          </label>
+          <label>Category
+            <input id="exerciseCategory" type="text" placeholder="e.g. Push, cardio, legs" />
+          </label>
+          <label>Sets
+            <input id="exerciseSets" type="number" min="0" step="1" />
+          </label>
+          <label>Reps
+            <input id="exerciseReps" type="number" min="0" step="1" />
+          </label>
+          <label>Weight
+            <input id="exerciseWeight" type="number" min="0" step="0.5" placeholder="lb or kg" />
+          </label>
+          <label>Duration (min)
+            <input id="exerciseDuration" type="number" min="0" step="0.5" />
+          </label>
+          <label>Distance
+            <input id="exerciseDistance" type="number" min="0" step="0.01" placeholder="km/mi" />
+          </label>
+          <label class="full-width">Notes
+            <textarea id="exerciseNotes" rows="2" placeholder="Optional"></textarea>
+          </label>
+          <button type="submit">Save exercise</button>
+        </form>
+        <div id="exerciseList" class="list"></div>
+      </section>
+
+      <section id="recipesTab" class="tab-section" aria-labelledby="recipesHeading">
+        <h3 id="recipesHeading">Saved recipes / meals</h3>
+        <form id="recipeForm" class="grid-form">
+          <label>Name
+            <input id="recipeName" type="text" placeholder="e.g. Chicken rice bowl" required />
+          </label>
+          <label>Serving size
+            <input id="recipeServingSize" type="text" placeholder="e.g. 1 bowl / 250 g" />
+          </label>
+          <label>Calories / serving
+            <input id="recipeCalories" type="number" min="0" step="1" value="0" />
+          </label>
+          <label>Protein (g)
+            <input id="recipeProtein" type="number" min="0" step="0.1" value="0" />
+          </label>
+          <label>Fat (g)
+            <input id="recipeFat" type="number" min="0" step="0.1" value="0" />
+          </label>
+          <label>Carbs (g)
+            <input id="recipeCarbs" type="number" min="0" step="0.1" value="0" />
+          </label>
+          <label class="full-width">Notes
+            <textarea id="recipeNotes" rows="2" placeholder="Optional"></textarea>
+          </label>
+          <button type="submit">Save recipe</button>
+        </form>
+        <div id="recipeList" class="list"></div>
+      </section>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>Static app prototype. Data is stored in browser IndexedDB as a SQLite database and can be exported as a real <code>.sqlite</code> file.</p>
+  </footer>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
+  <script>
+/* global initSqlJs */
+
+const SQL_JS_CDN = "https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/";
+const IDB_NAME = "all_in_one_fitness_tracker";
+const IDB_STORE = "sqlite";
+const IDB_KEY = "main-db";
+
+const SCHEMA_SQL = `
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE IF NOT EXISTS sleep_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  date TEXT NOT NULL UNIQUE,
+  hours REAL NOT NULL CHECK (hours >= 0 AND hours <= 24),
+  quality INTEGER CHECK (quality IS NULL OR (quality >= 1 AND quality <= 5)),
+  notes TEXT,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS exercise_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  date TEXT NOT NULL,
+  exercise_name TEXT NOT NULL,
+  category TEXT,
+  sets INTEGER CHECK (sets IS NULL OR sets >= 0),
+  reps INTEGER CHECK (reps IS NULL OR reps >= 0),
+  weight REAL CHECK (weight IS NULL OR weight >= 0),
+  duration_min REAL CHECK (duration_min IS NULL OR duration_min >= 0),
+  distance REAL CHECK (distance IS NULL OR distance >= 0),
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS recipes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  serving_size TEXT,
+  calories REAL NOT NULL DEFAULT 0,
+  protein REAL NOT NULL DEFAULT 0,
+  fat REAL NOT NULL DEFAULT 0,
+  carbs REAL NOT NULL DEFAULT 0,
+  notes TEXT,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS nutrition_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  date TEXT NOT NULL,
+  meal_type TEXT NOT NULL DEFAULT 'meal',
+  recipe_id INTEGER,
+  custom_name TEXT,
+  servings REAL NOT NULL DEFAULT 1 CHECK (servings > 0),
+  calories REAL NOT NULL DEFAULT 0,
+  protein REAL NOT NULL DEFAULT 0,
+  fat REAL NOT NULL DEFAULT 0,
+  carbs REAL NOT NULL DEFAULT 0,
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS daily_nutrition (
+  date TEXT PRIMARY KEY,
+  calories REAL NOT NULL DEFAULT 0,
+  protein REAL NOT NULL DEFAULT 0,
+  fat REAL NOT NULL DEFAULT 0,
+  carbs REAL NOT NULL DEFAULT 0,
+  meal_count INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_sleep_logs_date ON sleep_logs(date);
+CREATE INDEX IF NOT EXISTS idx_exercise_logs_date ON exercise_logs(date);
+CREATE INDEX IF NOT EXISTS idx_nutrition_logs_date ON nutrition_logs(date);
+CREATE INDEX IF NOT EXISTS idx_recipes_name ON recipes(name);
+`;
+
+let SQL;
+let db;
+let currentMonth;
+let selectedDate;
+let activeView = "nutrition";
+let saveTimer;
+
+const els = {};
+
+window.addEventListener("DOMContentLoaded", async () => {
+  cacheElements();
+  setInitialDates();
+  bindEvents();
+  setStatus("Loading SQLite...", true);
+
+  try {
+    SQL = await initSqlJs({ locateFile: file => `${SQL_JS_CDN}${file}` });
+    const stored = await loadDbFromIndexedDb();
+    db = stored ? new SQL.Database(new Uint8Array(stored)) : new SQL.Database();
+    db.run(SCHEMA_SQL);
+    setStatus(stored ? "Loaded saved DB" : "New DB ready");
+    renderAll();
+    queuePersist();
+  } catch (error) {
+    console.error(error);
+    setStatus("SQLite failed to load", true);
+    alert("SQLite failed to load. Check your network connection because sql.js is loaded from a CDN.");
+  }
+});
+
+function cacheElements() {
+  const ids = [
+    "downloadDbBtn", "uploadDbInput", "sampleDataBtn", "newDbBtn", "prevMonthBtn", "nextMonthBtn", "todayBtn",
+    "monthLabel", "calendar", "legend", "selectedDateHeading", "dbStatus", "summaryCards",
+    "nutritionForm", "mealType", "recipeSelect", "nutritionName", "servings", "mealCalories", "mealProtein", "mealFat", "mealCarbs", "nutritionNotes", "nutritionList",
+    "sleepForm", "sleepHours", "sleepQuality", "sleepNotes", "sleepList",
+    "exerciseForm", "exerciseName", "exerciseCategory", "exerciseSets", "exerciseReps", "exerciseWeight", "exerciseDuration", "exerciseDistance", "exerciseNotes", "exerciseList",
+    "recipeForm", "recipeName", "recipeServingSize", "recipeCalories", "recipeProtein", "recipeFat", "recipeCarbs", "recipeNotes", "recipeList"
+  ];
+  ids.forEach(id => { els[id] = document.getElementById(id); });
+  els.viewButtons = Array.from(document.querySelectorAll(".view-btn"));
+  els.tabButtons = Array.from(document.querySelectorAll(".tab-btn"));
+  els.tabSections = Array.from(document.querySelectorAll(".tab-section"));
+}
+
+function setInitialDates() {
+  const today = new Date();
+  currentMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  selectedDate = dateKey(today.getFullYear(), today.getMonth() + 1, today.getDate());
+}
+
+function bindEvents() {
+  els.prevMonthBtn.addEventListener("click", () => {
+    currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1);
+    renderCalendar();
+  });
+
+  els.nextMonthBtn.addEventListener("click", () => {
+    currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
+    renderCalendar();
+  });
+
+  els.todayBtn.addEventListener("click", () => {
+    const today = new Date();
+    currentMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    selectedDate = dateKey(today.getFullYear(), today.getMonth() + 1, today.getDate());
+    renderAll();
+  });
+
+  els.viewButtons.forEach(button => {
+    button.addEventListener("click", () => {
+      activeView = button.dataset.view;
+      els.viewButtons.forEach(btn => btn.classList.toggle("active", btn === button));
+      renderCalendar();
+    });
+  });
+
+  els.tabButtons.forEach(button => {
+    button.addEventListener("click", () => {
+      els.tabButtons.forEach(btn => btn.classList.toggle("active", btn === button));
+      els.tabSections.forEach(section => section.classList.toggle("active", section.id === button.dataset.tab));
+    });
+  });
+
+  els.calendar.addEventListener("click", event => {
+    const day = event.target.closest(".day-cell:not(.empty)");
+    if (!day) return;
+    selectedDate = day.dataset.date;
+    renderAll();
+  });
+
+  els.recipeSelect.addEventListener("change", fillMealMacrosFromRecipe);
+  els.servings.addEventListener("input", fillMealMacrosFromRecipe);
+
+  els.nutritionForm.addEventListener("submit", handleNutritionSubmit);
+  els.sleepForm.addEventListener("submit", handleSleepSubmit);
+  els.exerciseForm.addEventListener("submit", handleExerciseSubmit);
+  els.recipeForm.addEventListener("submit", handleRecipeSubmit);
+
+  document.body.addEventListener("click", handleDeleteButtons);
+
+  els.downloadDbBtn.addEventListener("click", downloadDb);
+  els.uploadDbInput.addEventListener("change", handleUploadDb);
+  els.sampleDataBtn.addEventListener("click", addSampleData);
+  els.newDbBtn.addEventListener("click", createBlankDb);
+}
+
+function renderAll() {
+  if (!db) return;
+  renderCalendar();
+  renderSelectedDate();
+  renderRecipeOptions();
+  renderRecipeList();
+}
+
+function renderCalendar() {
+  if (!db) return;
+  const year = currentMonth.getFullYear();
+  const month = currentMonth.getMonth();
+  const monthName = currentMonth.toLocaleString(undefined, { month: "long", year: "numeric" });
+  els.monthLabel.textContent = monthName;
+  renderLegend();
+
+  const todayKey = formatDateKey(new Date());
+  const firstWeekday = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const fragments = [];
+
+  weekdays.forEach(day => {
+    fragments.push(`<div class="weekday">${day}</div>`);
+  });
+
+  for (let i = 0; i < firstWeekday; i += 1) {
+    fragments.push(`<button class="day-cell empty" type="button" tabindex="-1"></button>`);
+  }
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const key = dateKey(year, month + 1, day);
+    const data = getDayDisplayData(key, activeView);
+    const classes = ["day-cell", `level-${data.level}`];
+    if (key === todayKey) classes.push("today");
+    if (key === selectedDate) classes.push("selected");
+    fragments.push(`
+      <button class="${classes.join(" ")}" type="button" data-date="${key}" title="${escapeHtml(data.title)}">
+        <span class="day-number">${day}</span>
+        <span class="day-value">${escapeHtml(data.label)}</span>
+      </button>
+    `);
+  }
+
+  els.calendar.innerHTML = fragments.join("");
+}
+
+function renderLegend() {
+  const labels = {
+    nutrition: ["No meals", "Light", "Moderate", "High", "Very high"],
+    sleep: ["No sleep log", "< 5h", "5-7h", "7-9h", "9h+"],
+    exercise: ["No exercise", "Small", "Moderate", "Big", "Very big"]
+  };
+  els.legend.innerHTML = labels[activeView].map((label, index) => `
+    <span class="legend-swatch level-${index}"></span><span>${label}</span>
+  `).join("");
+}
+
+function renderSelectedDate() {
+  const prettyDate = new Date(`${selectedDate}T12:00:00`).toLocaleDateString(undefined, {
+    weekday: "long", month: "long", day: "numeric", year: "numeric"
+  });
+  els.selectedDateHeading.textContent = prettyDate;
+
+  const nutrition = getDailyNutrition(selectedDate);
+  const sleep = getSleep(selectedDate);
+  const exercises = getExercises(selectedDate);
+
+  const totalSets = exercises.reduce((sum, item) => sum + (Number(item.sets) || 0), 0);
+  const totalMinutes = exercises.reduce((sum, item) => sum + (Number(item.duration_min) || 0), 0);
+
+  els.summaryCards.innerHTML = `
+    <div class="summary-card"><span>Nutrition</span><strong>${round(nutrition.calories, 0)} kcal</strong><br><small>${round(nutrition.protein, 1)}g protein</small></div>
+    <div class="summary-card"><span>Sleep</span><strong>${sleep ? round(sleep.hours, 2) : "-"} h</strong><br><small>${sleep && sleep.quality ? `Quality ${sleep.quality}/5` : "No rating"}</small></div>
+    <div class="summary-card"><span>Exercise</span><strong>${exercises.length}</strong><br><small>${totalSets} sets · ${round(totalMinutes, 1)} min</small></div>
+  `;
+
+  renderNutritionList();
+  renderSleepList();
+  renderExerciseList();
+  fillSleepForm();
+}
+
+function renderNutritionList() {
+  const rows = selectRows(`
+    SELECT nutrition_logs.*, recipes.name AS recipe_name
+    FROM nutrition_logs
+    LEFT JOIN recipes ON recipes.id = nutrition_logs.recipe_id
+    WHERE nutrition_logs.date = ?
+    ORDER BY nutrition_logs.created_at, nutrition_logs.id
+  `, [selectedDate]);
+
+  if (!rows.length) {
+    els.nutritionList.innerHTML = `<div class="empty-state">No meals logged for this day yet.</div>`;
+    return;
+  }
+
+  const nutrition = getDailyNutrition(selectedDate);
+  const records = rows.map(row => {
+    const name = row.recipe_name || row.custom_name || "Meal";
+    return `
+      <article class="record">
+        <div>
+          <h4>${escapeHtml(capitalize(row.meal_type))}: ${escapeHtml(name)}</h4>
+          <p class="record-meta">${round(row.servings, 2)} serving(s) · ${round(row.calories, 0)} kcal · ${round(row.protein, 1)}g protein · ${round(row.fat, 1)}g fat · ${round(row.carbs, 1)}g carbs</p>
+          ${row.notes ? `<p>${escapeHtml(row.notes)}</p>` : ""}
+        </div>
+        <button class="icon-danger" type="button" data-delete="nutrition" data-id="${row.id}">Delete</button>
+      </article>
+    `;
+  }).join("");
+
+  els.nutritionList.innerHTML = `
+    <div class="record">
+      <div>
+        <h4>Daily nutrition summary</h4>
+        <p class="record-meta">${round(nutrition.calories, 0)} kcal · ${round(nutrition.protein, 1)}g protein · ${round(nutrition.fat, 1)}g fat · ${round(nutrition.carbs, 1)}g carbs · ${nutrition.meal_count} meal(s)</p>
+      </div>
+    </div>
+    ${records}
+  `;
+}
+
+function renderSleepList() {
+  const sleep = getSleep(selectedDate);
+  if (!sleep) {
+    els.sleepList.innerHTML = `<div class="empty-state">No sleep logged for this day yet.</div>`;
+    return;
+  }
+
+  els.sleepList.innerHTML = `
+    <article class="record">
+      <div>
+        <h4>${round(sleep.hours, 2)} hours slept</h4>
+        <p class="record-meta">Quality: ${sleep.quality ? `${sleep.quality}/5` : "not rated"}</p>
+        ${sleep.notes ? `<p>${escapeHtml(sleep.notes)}</p>` : ""}
+      </div>
+      <button class="icon-danger" type="button" data-delete="sleep" data-id="${sleep.id}">Delete</button>
+    </article>
+  `;
+}
+
+function renderExerciseList() {
+  const rows = getExercises(selectedDate);
+  if (!rows.length) {
+    els.exerciseList.innerHTML = `<div class="empty-state">No exercises logged for this day yet.</div>`;
+    return;
+  }
+
+  els.exerciseList.innerHTML = rows.map(row => {
+    const strength = [
+      row.sets ? `${row.sets} sets` : "",
+      row.reps ? `${row.reps} reps` : "",
+      row.weight ? `${round(row.weight, 1)} weight` : ""
+    ].filter(Boolean).join(" · ");
+    const cardio = [
+      row.duration_min ? `${round(row.duration_min, 1)} min` : "",
+      row.distance ? `${round(row.distance, 2)} distance` : ""
+    ].filter(Boolean).join(" · ");
+    const details = [strength, cardio].filter(Boolean).join(" · ") || "Details not specified";
+    return `
+      <article class="record">
+        <div>
+          <h4>${escapeHtml(row.exercise_name)}</h4>
+          <p class="record-meta">${row.category ? `${escapeHtml(row.category)} · ` : ""}${escapeHtml(details)}</p>
+          ${row.notes ? `<p>${escapeHtml(row.notes)}</p>` : ""}
+        </div>
+        <button class="icon-danger" type="button" data-delete="exercise" data-id="${row.id}">Delete</button>
+      </article>
+    `;
+  }).join("");
+}
+
+function renderRecipeOptions() {
+  const recipes = getRecipes();
+  const currentValue = els.recipeSelect.value;
+  els.recipeSelect.innerHTML = `<option value="">Custom entry</option>` + recipes.map(recipe => `
+    <option value="${recipe.id}">${escapeHtml(recipe.name)} (${round(recipe.calories, 0)} kcal / serving)</option>
+  `).join("");
+  if (recipes.some(recipe => String(recipe.id) === currentValue)) {
+    els.recipeSelect.value = currentValue;
+  }
+}
+
+function renderRecipeList() {
+  const recipes = getRecipes();
+  if (!recipes.length) {
+    els.recipeList.innerHTML = `<div class="empty-state">No saved recipes yet. Add common meals here so meal logging is faster.</div>`;
+    return;
+  }
+
+  els.recipeList.innerHTML = recipes.map(recipe => `
+    <article class="record">
+      <div>
+        <h4>${escapeHtml(recipe.name)}</h4>
+        <p class="record-meta">${recipe.serving_size ? `${escapeHtml(recipe.serving_size)} · ` : ""}${round(recipe.calories, 0)} kcal · ${round(recipe.protein, 1)}g protein · ${round(recipe.fat, 1)}g fat · ${round(recipe.carbs, 1)}g carbs</p>
+        ${recipe.notes ? `<p>${escapeHtml(recipe.notes)}</p>` : ""}
+      </div>
+      <button class="icon-danger" type="button" data-delete="recipe" data-id="${recipe.id}">Delete</button>
+    </article>
+  `).join("");
+}
+
+function handleNutritionSubmit(event) {
+  event.preventDefault();
+  const recipeId = nullableInt(els.recipeSelect.value);
+  const servings = numberOrDefault(els.servings.value, 1);
+  const selectedRecipe = recipeId ? getRecipe(recipeId) : null;
+
+  let calories = numberOrDefault(els.mealCalories.value, 0);
+  let protein = numberOrDefault(els.mealProtein.value, 0);
+  let fat = numberOrDefault(els.mealFat.value, 0);
+  let carbs = numberOrDefault(els.mealCarbs.value, 0);
+  let name = els.nutritionName.value.trim();
+
+  if (selectedRecipe) {
+    calories = selectedRecipe.calories * servings;
+    protein = selectedRecipe.protein * servings;
+    fat = selectedRecipe.fat * servings;
+    carbs = selectedRecipe.carbs * servings;
+    name = name || selectedRecipe.name;
+  }
+
+  db.run(`
+    INSERT INTO nutrition_logs (date, meal_type, recipe_id, custom_name, servings, calories, protein, fat, carbs, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, [
+    selectedDate,
+    els.mealType.value,
+    recipeId,
+    name || "Custom meal",
+    servings,
+    calories,
+    protein,
+    fat,
+    carbs,
+    els.nutritionNotes.value.trim()
+  ]);
+
+  recalculateDailyNutrition(selectedDate);
+  els.nutritionForm.reset();
+  els.servings.value = "1";
+  [els.mealCalories, els.mealProtein, els.mealFat, els.mealCarbs].forEach(input => { input.value = "0"; });
+  queuePersistAndRender();
+}
+
+function handleSleepSubmit(event) {
+  event.preventDefault();
+  db.run(`
+    INSERT INTO sleep_logs (date, hours, quality, notes, updated_at)
+    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(date) DO UPDATE SET
+      hours = excluded.hours,
+      quality = excluded.quality,
+      notes = excluded.notes,
+      updated_at = CURRENT_TIMESTAMP
+  `, [
+    selectedDate,
+    numberOrDefault(els.sleepHours.value, 0),
+    nullableInt(els.sleepQuality.value),
+    els.sleepNotes.value.trim()
+  ]);
+  queuePersistAndRender();
+}
+
+function handleExerciseSubmit(event) {
+  event.preventDefault();
+  db.run(`
+    INSERT INTO exercise_logs (date, exercise_name, category, sets, reps, weight, duration_min, distance, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, [
+    selectedDate,
+    els.exerciseName.value.trim(),
+    els.exerciseCategory.value.trim(),
+    nullableInt(els.exerciseSets.value),
+    nullableInt(els.exerciseReps.value),
+    nullableNumber(els.exerciseWeight.value),
+    nullableNumber(els.exerciseDuration.value),
+    nullableNumber(els.exerciseDistance.value),
+    els.exerciseNotes.value.trim()
+  ]);
+  els.exerciseForm.reset();
+  queuePersistAndRender();
+}
+
+function handleRecipeSubmit(event) {
+  event.preventDefault();
+  db.run(`
+    INSERT INTO recipes (name, serving_size, calories, protein, fat, carbs, notes, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(name) DO UPDATE SET
+      serving_size = excluded.serving_size,
+      calories = excluded.calories,
+      protein = excluded.protein,
+      fat = excluded.fat,
+      carbs = excluded.carbs,
+      notes = excluded.notes,
+      updated_at = CURRENT_TIMESTAMP
+  `, [
+    els.recipeName.value.trim(),
+    els.recipeServingSize.value.trim(),
+    numberOrDefault(els.recipeCalories.value, 0),
+    numberOrDefault(els.recipeProtein.value, 0),
+    numberOrDefault(els.recipeFat.value, 0),
+    numberOrDefault(els.recipeCarbs.value, 0),
+    els.recipeNotes.value.trim()
+  ]);
+  els.recipeForm.reset();
+  [els.recipeCalories, els.recipeProtein, els.recipeFat, els.recipeCarbs].forEach(input => { input.value = "0"; });
+  queuePersistAndRender();
+}
+
+function handleDeleteButtons(event) {
+  const button = event.target.closest("button[data-delete]");
+  if (!button || !db) return;
+  const type = button.dataset.delete;
+  const id = Number(button.dataset.id);
+
+  if (type === "nutrition") {
+    db.run("DELETE FROM nutrition_logs WHERE id = ?", [id]);
+    recalculateDailyNutrition(selectedDate);
+  } else if (type === "sleep") {
+    db.run("DELETE FROM sleep_logs WHERE id = ?", [id]);
+  } else if (type === "exercise") {
+    db.run("DELETE FROM exercise_logs WHERE id = ?", [id]);
+  } else if (type === "recipe") {
+    db.run("DELETE FROM recipes WHERE id = ?", [id]);
+  }
+
+  queuePersistAndRender();
+}
+
+function fillSleepForm() {
+  const sleep = getSleep(selectedDate);
+  els.sleepHours.value = sleep ? sleep.hours : "";
+  els.sleepQuality.value = sleep && sleep.quality ? String(sleep.quality) : "";
+  els.sleepNotes.value = sleep ? (sleep.notes || "") : "";
+}
+
+function fillMealMacrosFromRecipe() {
+  const recipeId = nullableInt(els.recipeSelect.value);
+  const recipe = recipeId ? getRecipe(recipeId) : null;
+  if (!recipe) return;
+
+  const servings = numberOrDefault(els.servings.value, 1);
+  els.nutritionName.value = recipe.name;
+  els.mealCalories.value = round(recipe.calories * servings, 0);
+  els.mealProtein.value = round(recipe.protein * servings, 1);
+  els.mealFat.value = round(recipe.fat * servings, 1);
+  els.mealCarbs.value = round(recipe.carbs * servings, 1);
+}
+
+function getDayDisplayData(date, view) {
+  if (view === "nutrition") {
+    const row = getDailyNutrition(date);
+    if (!row.meal_count) return { level: 0, label: "-", title: "No nutrition logged" };
+    const calories = Number(row.calories) || 0;
+    const level = calories >= 2400 ? 4 : calories >= 1600 ? 3 : calories >= 800 ? 2 : 1;
+    return { level, label: `${round(calories, 0)} kcal`, title: `${round(calories, 0)} kcal, ${round(row.protein, 1)}g protein` };
+  }
+
+  if (view === "sleep") {
+    const row = getSleep(date);
+    if (!row) return { level: 0, label: "-", title: "No sleep logged" };
+    const hours = Number(row.hours) || 0;
+    const level = hours >= 9 ? 4 : hours >= 7 ? 3 : hours >= 5 ? 2 : 1;
+    return { level, label: `${round(hours, 1)} h`, title: `${round(hours, 2)} hours slept` };
+  }
+
+  const rows = getExercises(date);
+  if (!rows.length) return { level: 0, label: "-", title: "No exercise logged" };
+  const score = rows.reduce((sum, row) => {
+    return sum + (Number(row.sets) || 0) + ((Number(row.duration_min) || 0) / 10);
+  }, 0);
+  const level = score >= 16 ? 4 : score >= 9 ? 3 : score >= 4 ? 2 : 1;
+  return { level, label: `${rows.length} item${rows.length === 1 ? "" : "s"}`, title: `${rows.length} exercise log(s)` };
+}
+
+function getSleep(date) {
+  return selectOne("SELECT * FROM sleep_logs WHERE date = ?", [date]);
+}
+
+function getExercises(date) {
+  return selectRows("SELECT * FROM exercise_logs WHERE date = ? ORDER BY created_at, id", [date]);
+}
+
+function getDailyNutrition(date) {
+  return selectOne("SELECT * FROM daily_nutrition WHERE date = ?", [date]) || {
+    date, calories: 0, protein: 0, fat: 0, carbs: 0, meal_count: 0
+  };
+}
+
+function getRecipes() {
+  return selectRows("SELECT * FROM recipes ORDER BY name COLLATE NOCASE", []);
+}
+
+function getRecipe(id) {
+  return selectOne("SELECT * FROM recipes WHERE id = ?", [id]);
+}
+
+function recalculateDailyNutrition(date) {
+  const totals = selectOne(`
+    SELECT
+      COUNT(*) AS meal_count,
+      COALESCE(SUM(calories), 0) AS calories,
+      COALESCE(SUM(protein), 0) AS protein,
+      COALESCE(SUM(fat), 0) AS fat,
+      COALESCE(SUM(carbs), 0) AS carbs
+    FROM nutrition_logs
+    WHERE date = ?
+  `, [date]);
+
+  if (!totals || Number(totals.meal_count) === 0) {
+    db.run("DELETE FROM daily_nutrition WHERE date = ?", [date]);
+    return;
+  }
+
+  db.run(`
+    INSERT INTO daily_nutrition (date, calories, protein, fat, carbs, meal_count, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(date) DO UPDATE SET
+      calories = excluded.calories,
+      protein = excluded.protein,
+      fat = excluded.fat,
+      carbs = excluded.carbs,
+      meal_count = excluded.meal_count,
+      updated_at = CURRENT_TIMESTAMP
+  `, [date, totals.calories, totals.protein, totals.fat, totals.carbs, totals.meal_count]);
+}
+
+function selectRows(sql, params = []) {
+  const statement = db.prepare(sql);
+  statement.bind(params);
+  const rows = [];
+  while (statement.step()) {
+    rows.push(statement.getAsObject());
+  }
+  statement.free();
+  return rows;
+}
+
+function selectOne(sql, params = []) {
+  return selectRows(sql, params)[0] || null;
+}
+
+async function queuePersistAndRender() {
+  renderAll();
+  queuePersist();
+}
+
+function queuePersist() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    try {
+      await saveDbToIndexedDb(db.export());
+      setStatus("Saved locally");
+    } catch (error) {
+      console.error(error);
+      setStatus("Local save failed", true);
+    }
+  }, 250);
+}
+
+async function loadDbFromIndexedDb() {
+  const database = await openIndexedDb();
+  return new Promise((resolve, reject) => {
+    const tx = database.transaction(IDB_STORE, "readonly");
+    const req = tx.objectStore(IDB_STORE).get(IDB_KEY);
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function saveDbToIndexedDb(uint8Array) {
+  const database = await openIndexedDb();
+  const buffer = uint8Array.buffer.slice(uint8Array.byteOffset, uint8Array.byteOffset + uint8Array.byteLength);
+  return new Promise((resolve, reject) => {
+    const tx = database.transaction(IDB_STORE, "readwrite");
+    tx.objectStore(IDB_STORE).put(buffer, IDB_KEY);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+function openIndexedDb() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(IDB_NAME, 1);
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore(IDB_STORE);
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function downloadDb() {
+  if (!db) return;
+  const bytes = db.export();
+  const blob = new Blob([bytes], { type: "application/vnd.sqlite3" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `fitness-tracker-${selectedDate}.sqlite`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(link.href);
+}
+
+function handleUploadDb(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try {
+      const imported = new SQL.Database(new Uint8Array(reader.result));
+      imported.run(SCHEMA_SQL);
+      db = imported;
+      await saveDbToIndexedDb(db.export());
+      setStatus(`Loaded ${file.name}`);
+      renderAll();
+    } catch (error) {
+      console.error(error);
+      alert("That file could not be opened as a SQLite database.");
+    } finally {
+      event.target.value = "";
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function addSampleData() {
+  const today = selectedDate;
+  const recipes = [
+    ["Greek yogurt bowl", "1 bowl", 420, 38, 8, 48, "Yogurt, berries, oats, honey"],
+    ["Chicken rice bowl", "1 bowl", 690, 55, 18, 76, "Chicken breast, rice, vegetables, sauce"],
+    ["Turkey wrap", "1 wrap", 520, 42, 16, 48, "Turkey, tortilla, cheese, vegetables"]
+  ];
+
+  recipes.forEach(recipe => {
+    db.run(`
+      INSERT INTO recipes (name, serving_size, calories, protein, fat, carbs, notes, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(name) DO NOTHING
+    `, recipe);
+  });
+
+  const yogurt = selectOne("SELECT * FROM recipes WHERE name = ?", ["Greek yogurt bowl"]);
+  const wrap = selectOne("SELECT * FROM recipes WHERE name = ?", ["Turkey wrap"]);
+  if (yogurt) {
+    db.run(`
+      INSERT INTO nutrition_logs (date, meal_type, recipe_id, custom_name, servings, calories, protein, fat, carbs, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [today, "breakfast", yogurt.id, yogurt.name, 1, yogurt.calories, yogurt.protein, yogurt.fat, yogurt.carbs, "Sample breakfast"]);
+  }
+  if (wrap) {
+    db.run(`
+      INSERT INTO nutrition_logs (date, meal_type, recipe_id, custom_name, servings, calories, protein, fat, carbs, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [today, "lunch", wrap.id, wrap.name, 1, wrap.calories, wrap.protein, wrap.fat, wrap.carbs, "Sample lunch"]);
+  }
+
+  db.run(`
+    INSERT INTO sleep_logs (date, hours, quality, notes, updated_at)
+    VALUES (?, 7.5, 4, 'Sample sleep log', CURRENT_TIMESTAMP)
+    ON CONFLICT(date) DO UPDATE SET hours = excluded.hours, quality = excluded.quality, notes = excluded.notes, updated_at = CURRENT_TIMESTAMP
+  `, [today]);
+
+  db.run(`
+    INSERT INTO exercise_logs (date, exercise_name, category, sets, reps, weight, duration_min, distance, notes)
+    VALUES (?, 'Goblet squat', 'Legs', 3, 10, 40, NULL, NULL, 'Sample strength entry')
+  `, [today]);
+  db.run(`
+    INSERT INTO exercise_logs (date, exercise_name, category, sets, reps, weight, duration_min, distance, notes)
+    VALUES (?, 'Incline walk', 'Cardio', NULL, NULL, NULL, 20, 1.2, 'Sample cardio entry')
+  `, [today]);
+
+  recalculateDailyNutrition(today);
+  queuePersistAndRender();
+}
+
+async function createBlankDb() {
+  const confirmed = window.confirm("Create a new blank database? Download your current DB first if you want to keep it.");
+  if (!confirmed) return;
+  db = new SQL.Database();
+  db.run(SCHEMA_SQL);
+  await saveDbToIndexedDb(db.export());
+  setStatus("New blank DB ready");
+  renderAll();
+}
+
+function setStatus(text, warning = false) {
+  els.dbStatus.textContent = text;
+  els.dbStatus.classList.toggle("warn", Boolean(warning));
+}
+
+function dateKey(year, month, day) {
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function formatDateKey(date) {
+  return dateKey(date.getFullYear(), date.getMonth() + 1, date.getDate());
+}
+
+function numberOrDefault(value, fallback) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function nullableNumber(value) {
+  if (value === "" || value === null || value === undefined) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function nullableInt(value) {
+  if (value === "" || value === null || value === undefined) return null;
+  const n = parseInt(value, 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+function round(value, decimals = 1) {
+  const n = Number(value) || 0;
+  const factor = 10 ** decimals;
+  const rounded = Math.round(n * factor) / factor;
+  return decimals === 0 ? String(Math.round(rounded)) : String(rounded);
+}
+
+function capitalize(value) {
+  if (!value) return "";
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+  </script>
+</body>
+</html>
