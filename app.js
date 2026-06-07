@@ -1,33 +1,36 @@
-// ─── Constants ───────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 const WORKER_URL_KEY = "fitness_tracker_worker_url";
 const AUTH_TOKEN_KEY = "fitness_tracker_auth_token";
-const MIN_DATE       = "2026-06-01"; // earliest selectable date
+const MIN_DATE       = "2026-06-01";
 
-// ─── State ───────────────────────────────────────────────────────────────────
-let workerUrl;
-let authToken;
-let currentMonth;
-let selectedDate;
-let activeView    = "nutrition"; // calendar heatmap layer
-let topView       = "calendar";  // "calendar" | "trends"
-let trendDays     = 30;
-let exerciseLibrary = [];        // [{id, name, category}] — refreshed on change
+// ─── State ────────────────────────────────────────────────────────────────────
+let workerUrl, authToken;
+let currentMonth, selectedDate;
+let topView    = "calendar";
+let trendDays  = 30;
+
+// Exercise logging state
+let exerciseLibrary = []; // [{id, name, category, tracking_type, allow_sets_reps, allow_distance}]
+let currentExercise = null;
+let setCount        = 1;
+
+// Nutrition logging state
+let selectedRecipe   = null; // full recipe row when a library recipe is selected
+let nutritionByWeight = false;
 
 const els = {};
 
-// ─── Boot ────────────────────────────────────────────────────────────────────
+// ─── Boot ─────────────────────────────────────────────────────────────────────
 window.addEventListener("DOMContentLoaded", async () => {
   cacheElements();
   setInitialDates();
   bindEvents();
+  renderDotLegend();
 
   workerUrl = localStorage.getItem(WORKER_URL_KEY) || "";
   authToken = localStorage.getItem(AUTH_TOKEN_KEY) || "";
 
-  if (!workerUrl || !authToken) {
-    showConfigModal();
-    return;
-  }
+  if (!workerUrl || !authToken) { showConfigModal(); return; }
   await initApp();
 });
 
@@ -76,13 +79,12 @@ function showConfigModal() {
 
   modal.querySelector("#configForm").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const newUrl   = modal.querySelector("#configWorkerUrl").value.trim().replace(/\/$/, "");
-    const newToken = modal.querySelector("#configAuthToken").value.trim();
-    const errEl    = modal.querySelector("#configError");
+    const newUrl    = modal.querySelector("#configWorkerUrl").value.trim().replace(/\/$/, "");
+    const newToken  = modal.querySelector("#configAuthToken").value.trim();
+    const errEl     = modal.querySelector("#configError");
     const submitBtn = modal.querySelector("#configSubmitBtn");
     errEl.style.display = "none";
-    submitBtn.disabled = true;
-    submitBtn.textContent = "Connecting…";
+    submitBtn.disabled = true; submitBtn.textContent = "Connecting…";
     try {
       const res = await fetch(`${newUrl}/query`, {
         method: "POST",
@@ -90,8 +92,7 @@ function showConfigModal() {
         body: JSON.stringify({ sql: "SELECT 1" })
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      workerUrl = newUrl;
-      authToken = newToken;
+      workerUrl = newUrl; authToken = newToken;
       localStorage.setItem(WORKER_URL_KEY, workerUrl);
       localStorage.setItem(AUTH_TOKEN_KEY, authToken);
       modal.close(); modal.remove();
@@ -99,13 +100,12 @@ function showConfigModal() {
     } catch (err) {
       errEl.textContent = `Could not connect: ${err.message}`;
       errEl.style.display = "";
-      submitBtn.disabled = false;
-      submitBtn.textContent = "Connect";
+      submitBtn.disabled = false; submitBtn.textContent = "Connect";
     }
   });
 }
 
-// ─── Worker API layer ─────────────────────────────────────────────────────────
+// ─── Worker API layer ──────────────────────────────────────────────────────────
 async function dbFetch(path, body) {
   const res = await fetch(`${workerUrl}${path}`, {
     method: "POST",
@@ -133,30 +133,41 @@ async function dbBatch(statements) {
   return dbFetch("/batch", { statements });
 }
 
-// ─── Element cache ─────────────────────────────────────────────────────────────
+// ─── Element cache ────────────────────────────────────────────────────────────
 function cacheElements() {
   const ids = [
-    "addRecipeBtn", "addExerciseLibBtn", "sampleDataBtn", "settingsBtn",
-    "dbStatus",
+    "addRecipeBtn", "addExerciseLibBtn", "sampleDataBtn", "settingsBtn", "dbStatus",
     "prevMonthBtn", "nextMonthBtn", "todayBtn", "monthLabel", "calendar", "legend",
     "calendarLayout", "trendsLayout", "chartsGrid",
     "exerciseProgressSelect", "exerciseProgressChart", "exerciseProgressCard",
     "selectedDateHeading", "summaryCards",
-    "nutritionForm", "mealType", "recipeSelect", "nutritionName", "servings",
-    "mealCalories", "mealProtein", "mealFat", "mealCarbs", "nutritionNotes", "nutritionList",
-    "sleepForm", "sleepHours", "sleepQuality", "sleepNotes", "sleepList",
-    "exerciseForm", "exerciseLibSelect", "exerciseCustomLabel", "exerciseName",
-    "exerciseCategory", "exerciseSets", "exerciseReps", "exerciseWeight",
-    "exerciseDuration", "exerciseDistance", "exerciseNotes", "exerciseList",
-    "bodyForm", "bodyWeight", "bodyWaist", "bodyNotes", "bodyList",
+    // Nutrition form
+    "nutritionForm", "mealType", "nutritionIsCustom",
+    "nutritionRecipeSection", "recipeSelect",
+    "nutritionCustomSection", "nutritionName", "mealCalories", "mealProtein", "mealCarbs", "mealFat",
+    "nutritionSaveToLib",
+    "nutritionQtyToggle", "qtyServingsBtn", "qtyGramsBtn",
+    "nutritionServingsRow", "nutritionGramsRow", "servings", "nutritionGrams",
+    "nutritionList",
+    // Sleep form
+    "sleepForm", "sleepHours", "sleepList",
+    // Exercise form
+    "exerciseForm", "exerciseLibSelect",
+    "exerciseSetsSection", "addSetBtn", "setRows",
+    "exerciseDistanceRow", "exerciseDistance",
+    "exerciseList",
+    // Body form
+    "bodyForm", "bodyWeight", "bodyWaist", "bodyList",
+    // Recipe modal
     "recipeModal", "recipeModalClose",
-    "recipeForm", "recipeName", "recipeServingSize",
-    "recipeCalories", "recipeProtein", "recipeFat", "recipeCarbs", "recipeNotes", "recipeList",
+    "recipeForm", "recipeName", "recipeCalories", "recipeProtein", "recipeCarbs", "recipeFat",
+    "recipeAllowWeight", "recipeGramsPerServingLabel", "recipeGramsPerServing", "recipeList",
+    // Exercise lib modal
     "exerciseLibModal", "exerciseLibModalClose",
-    "exerciseLibForm", "exerciseLibName", "exerciseLibCategory", "exerciseLibNotes", "exerciseLibList"
+    "exerciseLibForm", "exerciseLibName", "exerciseLibType",
+    "exerciseLibAllowSetsReps", "exerciseLibAllowDistance", "exerciseLibList"
   ];
   ids.forEach(id => { els[id] = document.getElementById(id); });
-  els.viewButtons    = Array.from(document.querySelectorAll(".view-btn"));
   els.tabButtons     = Array.from(document.querySelectorAll(".tab-btn"));
   els.tabSections    = Array.from(document.querySelectorAll(".tab-section"));
   els.topViewButtons = Array.from(document.querySelectorAll(".top-view-btn"));
@@ -164,16 +175,14 @@ function cacheElements() {
 }
 
 function setInitialDates() {
-  const today    = new Date();
+  const today  = new Date();
   const todayKey = formatDateKey(today);
-  currentMonth   = new Date(today.getFullYear(), today.getMonth(), 1);
-  // Clamp selected date to today — it can never be in the future on init
-  selectedDate   = todayKey > MIN_DATE ? todayKey : MIN_DATE;
+  currentMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  selectedDate = todayKey >= MIN_DATE ? todayKey : MIN_DATE;
 }
 
-// ─── Event binding ─────────────────────────────────────────────────────────────
+// ─── Event binding ────────────────────────────────────────────────────────────
 function bindEvents() {
-
   // Month navigation
   els.prevMonthBtn.addEventListener("click", async () => {
     currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1);
@@ -190,15 +199,6 @@ function bindEvents() {
     await renderAll();
   });
 
-  // Calendar heatmap layer
-  els.viewButtons.forEach(btn => {
-    btn.addEventListener("click", async () => {
-      activeView = btn.dataset.view;
-      els.viewButtons.forEach(b => b.classList.toggle("active", b === btn));
-      await renderCalendar();
-    });
-  });
-
   // Day tabs
   els.tabButtons.forEach(btn => {
     btn.addEventListener("click", () => {
@@ -207,7 +207,7 @@ function bindEvents() {
     });
   });
 
-  // Calendar day click — only non-disabled cells
+  // Calendar day click
   els.calendar.addEventListener("click", async (event) => {
     const day = event.target.closest(".day-cell:not(.empty):not(.disabled)");
     if (!day) return;
@@ -217,25 +217,37 @@ function bindEvents() {
     await renderSelectedDate();
   });
 
-  // Nutrition form
-  els.recipeSelect.addEventListener("change", fillMealMacrosFromRecipe);
-  els.servings.addEventListener("input", fillMealMacrosFromRecipe);
+  // ── Nutrition form events ──────────────────────────────────────
+  els.nutritionIsCustom.addEventListener("change", nutritionIsCustomToggle);
+  els.recipeSelect.addEventListener("change", onRecipeChange);
+  els.qtyServingsBtn.addEventListener("click", () => setNutritionQtyMode(false));
+  els.qtyGramsBtn.addEventListener("click",    () => setNutritionQtyMode(true));
   els.nutritionForm.addEventListener("submit", handleNutritionSubmit);
 
-  // Sleep form
+  // ── Sleep form ─────────────────────────────────────────────────
   els.sleepForm.addEventListener("submit", handleSleepSubmit);
 
-  // Exercise form
+  // ── Exercise form events ───────────────────────────────────────
   els.exerciseLibSelect.addEventListener("change", handleExerciseLibSelectChange);
+  els.addSetBtn.addEventListener("click", addSetRow);
+  els.setRows.addEventListener("click", (e) => {
+    const btn = e.target.closest(".remove-set-btn");
+    if (btn) removeSetRow(btn.dataset.set);
+  });
   els.exerciseForm.addEventListener("submit", handleExerciseSubmit);
 
-  // Body form
+  // ── Body form ──────────────────────────────────────────────────
   els.bodyForm.addEventListener("submit", handleBodySubmit);
 
-  // Delete buttons (delegated on body — covers modals too)
+  // ── Recipe allow-weight toggle ─────────────────────────────────
+  els.recipeAllowWeight.addEventListener("change", () => {
+    els.recipeGramsPerServingLabel.style.display = els.recipeAllowWeight.checked ? "" : "none";
+  });
+
+  // ── Delete (delegated) ─────────────────────────────────────────
   document.body.addEventListener("click", handleDeleteButtons);
 
-  // Top-level view (Calendar / Trends)
+  // ── Top view switcher ──────────────────────────────────────────
   els.topViewButtons.forEach(btn => {
     btn.addEventListener("click", async () => {
       topView = btn.dataset.topView;
@@ -244,7 +256,7 @@ function bindEvents() {
     });
   });
 
-  // Trend range
+  // ── Trend range ────────────────────────────────────────────────
   els.rangeButtons.forEach(btn => {
     btn.addEventListener("click", async () => {
       trendDays = Number(btn.dataset.days);
@@ -253,12 +265,12 @@ function bindEvents() {
     });
   });
 
-  // Exercise progress select
+  // ── Exercise progress select ───────────────────────────────────
   els.exerciseProgressSelect.addEventListener("change", async () => {
     await renderExerciseProgressChart(els.exerciseProgressSelect.value);
   });
 
-  // Recipe modal
+  // ── Recipe modal ───────────────────────────────────────────────
   els.addRecipeBtn.addEventListener("click", async () => {
     await refreshRecipeModal();
     els.recipeModal.showModal();
@@ -267,7 +279,7 @@ function bindEvents() {
   els.recipeModal.addEventListener("click", e => { if (e.target === els.recipeModal) els.recipeModal.close(); });
   els.recipeForm.addEventListener("submit", handleRecipeSubmit);
 
-  // Exercise library modal
+  // ── Exercise library modal ─────────────────────────────────────
   els.addExerciseLibBtn.addEventListener("click", async () => {
     await refreshExerciseLibModal();
     els.exerciseLibModal.showModal();
@@ -276,12 +288,12 @@ function bindEvents() {
   els.exerciseLibModal.addEventListener("click", e => { if (e.target === els.exerciseLibModal) els.exerciseLibModal.close(); });
   els.exerciseLibForm.addEventListener("submit", handleExerciseLibSubmit);
 
-  // Misc
+  // ── Misc ───────────────────────────────────────────────────────
   els.sampleDataBtn.addEventListener("click", addSampleData);
   els.settingsBtn.addEventListener("click", () => showConfigModal());
 }
 
-// ─── Top-level view switching ─────────────────────────────────────────────────
+// ─── Top view switching ───────────────────────────────────────────────────────
 async function toggleTopView() {
   const isCalendar = topView === "calendar";
   els.calendarLayout.style.display = isCalendar ? "" : "none";
@@ -289,13 +301,22 @@ async function toggleTopView() {
   if (!isCalendar) await renderTrendsView();
 }
 
-// ─── Render router ─────────────────────────────────────────────────────────────
+// ─── Render router ────────────────────────────────────────────────────────────
 async function renderAll() {
   if (topView === "calendar") {
     await Promise.all([renderCalendar(), renderSelectedDate()]);
   } else {
     await renderTrendsView();
   }
+}
+
+// ─── Dot legend (rendered once) ───────────────────────────────────────────────
+function renderDotLegend() {
+  els.legend.innerHTML = `
+    <span class="dot dot-nutrition"></span><span>Meals</span>
+    <span class="dot dot-sleep"></span><span>Sleep</span>
+    <span class="dot dot-exercise"></span><span>Exercise</span>
+    <span class="dot dot-body"></span><span>Body</span>`;
 }
 
 // ─── Calendar rendering ───────────────────────────────────────────────────────
@@ -306,19 +327,19 @@ async function renderCalendar() {
   const startDate   = dateKey(year, month + 1, 1);
   const endDate     = dateKey(year, month + 1, daysInMonth);
 
-  const [nutritionMonth, sleepMonth, exerciseMonth] = await Promise.all([
-    dbQuery("SELECT date, calories, protein, meal_count FROM daily_nutrition WHERE date >= ? AND date <= ?", [startDate, endDate]),
-    dbQuery("SELECT date, hours FROM sleep_logs WHERE date >= ? AND date <= ?", [startDate, endDate]),
-    dbQuery("SELECT date, sets, duration_min FROM exercise_logs WHERE date >= ? AND date <= ?", [startDate, endDate])
+  const [nutritionDates, sleepDates, exerciseDates, bodyDates] = await Promise.all([
+    dbQuery("SELECT DISTINCT date FROM daily_nutrition WHERE date >= ? AND date <= ?", [startDate, endDate]),
+    dbQuery("SELECT DISTINCT date FROM sleep_logs WHERE date >= ? AND date <= ?",      [startDate, endDate]),
+    dbQuery("SELECT DISTINCT date FROM exercise_logs WHERE date >= ? AND date <= ?",   [startDate, endDate]),
+    dbQuery("SELECT DISTINCT date FROM body_measurements WHERE date >= ? AND date <= ?", [startDate, endDate])
   ]);
 
-  const nutritionMap = Object.fromEntries(nutritionMonth.map(r => [r.date, r]));
-  const sleepMap     = Object.fromEntries(sleepMonth.map(r => [r.date, r]));
-  const exerciseMap  = {};
-  exerciseMonth.forEach(r => { (exerciseMap[r.date] ??= []).push(r); });
+  const nutritionSet = new Set(nutritionDates.map(r => r.date));
+  const sleepSet     = new Set(sleepDates.map(r => r.date));
+  const exerciseSet  = new Set(exerciseDates.map(r => r.date));
+  const bodySet      = new Set(bodyDates.map(r => r.date));
 
   els.monthLabel.textContent = currentMonth.toLocaleString(undefined, { month: "long", year: "numeric" });
-  renderLegend();
 
   const todayKey     = formatDateKey(new Date());
   const firstWeekday = new Date(year, month, 1).getDay();
@@ -332,55 +353,27 @@ async function renderCalendar() {
   for (let day = 1; day <= daysInMonth; day++) {
     const key        = dateKey(year, month + 1, day);
     const isDisabled = key < MIN_DATE || key > todayKey;
-    const data       = getDayDisplayData(key, activeView, nutritionMap, sleepMap, exerciseMap);
-    const classes    = ["day-cell", `level-${data.level}`];
-    if (isDisabled)      classes.push("disabled");
-    if (key === todayKey)     classes.push("today");
+    const classes    = ["day-cell"];
+    if (isDisabled)          classes.push("disabled");
+    if (key === todayKey)    classes.push("today");
     if (key === selectedDate) classes.push("selected");
+
+    const dots = [
+      nutritionSet.has(key) ? `<span class="dot dot-nutrition" title="Meals logged"></span>` : "",
+      sleepSet.has(key)     ? `<span class="dot dot-sleep"     title="Sleep logged"></span>` : "",
+      exerciseSet.has(key)  ? `<span class="dot dot-exercise"  title="Exercise logged"></span>` : "",
+      bodySet.has(key)      ? `<span class="dot dot-body"      title="Body logged"></span>` : ""
+    ].filter(Boolean).join("");
 
     fragments.push(`
       <button class="${classes.join(" ")}" type="button"
-        data-date="${key}" title="${escapeHtml(data.title)}"
-        ${isDisabled ? "tabindex=-1" : ""}>
+        data-date="${key}" ${isDisabled ? `tabindex="-1"` : ""}>
         <span class="day-number">${day}</span>
-        <span class="day-value">${escapeHtml(data.label)}</span>
+        <div class="day-dots">${dots}</div>
       </button>`);
   }
 
   els.calendar.innerHTML = fragments.join("");
-}
-
-function renderLegend() {
-  const labels = {
-    nutrition: ["No meals",    "Light",  "Moderate", "High",   "Very high"],
-    sleep:     ["No log",      "< 5h",   "5–7h",     "7–9h",   "9h+"],
-    exercise:  ["No exercise", "Small",  "Moderate", "Big",    "Very big"]
-  };
-  els.legend.innerHTML = labels[activeView].map((label, i) =>
-    `<span class="legend-swatch level-${i}"></span><span>${label}</span>`
-  ).join("");
-}
-
-function getDayDisplayData(date, view, nutritionMap, sleepMap, exerciseMap) {
-  if (view === "nutrition") {
-    const row = nutritionMap[date];
-    if (!row || !Number(row.meal_count)) return { level: 0, label: "-", title: "No nutrition logged" };
-    const cal = Number(row.calories) || 0;
-    const level = cal >= 2400 ? 4 : cal >= 1600 ? 3 : cal >= 800 ? 2 : 1;
-    return { level, label: `${round(cal, 0)} kcal`, title: `${round(cal, 0)} kcal · ${round(row.protein, 1)}g protein` };
-  }
-  if (view === "sleep") {
-    const row = sleepMap[date];
-    if (!row) return { level: 0, label: "-", title: "No sleep logged" };
-    const h = Number(row.hours) || 0;
-    const level = h >= 9 ? 4 : h >= 7 ? 3 : h >= 5 ? 2 : 1;
-    return { level, label: `${round(h, 1)} h`, title: `${round(h, 2)} hours slept` };
-  }
-  const rows = exerciseMap[date] || [];
-  if (!rows.length) return { level: 0, label: "-", title: "No exercise logged" };
-  const score = rows.reduce((s, r) => s + (Number(r.sets) || 0) + (Number(r.duration_min) || 0) / 10, 0);
-  const level = score >= 16 ? 4 : score >= 9 ? 3 : score >= 4 ? 2 : 1;
-  return { level, label: `${rows.length} item${rows.length === 1 ? "" : "s"}`, title: `${rows.length} exercise log(s)` };
 }
 
 // ─── Selected date rendering ──────────────────────────────────────────────────
@@ -390,21 +383,40 @@ async function renderSelectedDate() {
   });
   els.selectedDateHeading.textContent = prettyDate;
 
-  const [nutrition, sleep, exercises, mealRows, body] = await Promise.all([
+  const [nutrition, sleep, mealRows, exercises, body] = await Promise.all([
     dbOne("SELECT * FROM daily_nutrition WHERE date = ?", [selectedDate]),
     dbOne("SELECT * FROM sleep_logs WHERE date = ?", [selectedDate]),
-    dbQuery("SELECT * FROM exercise_logs WHERE date = ? ORDER BY created_at, id", [selectedDate]),
-    dbQuery(`SELECT nutrition_logs.*, recipes.name AS recipe_name
-             FROM nutrition_logs
-             LEFT JOIN recipes ON recipes.id = nutrition_logs.recipe_id
-             WHERE nutrition_logs.date = ?
-             ORDER BY nutrition_logs.created_at, nutrition_logs.id`, [selectedDate]),
+    dbQuery(`SELECT nl.*, r.name AS recipe_name
+             FROM nutrition_logs nl
+             LEFT JOIN recipes r ON r.id = nl.recipe_id
+             WHERE nl.date = ?
+             ORDER BY nl.created_at, nl.id`, [selectedDate]),
+    dbQuery(`SELECT el.id, el.date, el.exercise_name, el.distance, el.created_at,
+                    e.tracking_type, e.category
+             FROM exercise_logs el
+             LEFT JOIN exercises e ON e.id = el.exercise_id
+             WHERE el.date = ?
+             ORDER BY el.created_at, el.id`, [selectedDate]),
     dbOne("SELECT * FROM body_measurements WHERE date = ?", [selectedDate])
   ]);
 
-  const daily      = nutrition || { calories: 0, protein: 0, fat: 0, carbs: 0, meal_count: 0 };
-  const totalSets  = exercises.reduce((s, r) => s + (Number(r.sets) || 0), 0);
-  const totalMins  = exercises.reduce((s, r) => s + (Number(r.duration_min) || 0), 0);
+  // Fetch per-set data for exercise logs
+  let setsMap = {};
+  if (exercises.length > 0) {
+    const logIds = exercises.map(e => e.id);
+    const allSets = await dbQuery(
+      `SELECT * FROM exercise_sets WHERE log_id IN (${logIds.map(() => "?").join(",")}) ORDER BY log_id, set_number`,
+      logIds
+    );
+    allSets.forEach(s => { (setsMap[s.log_id] ??= []).push(s); });
+  }
+
+  // Summary cards
+  const daily    = nutrition || { calories: 0, protein: 0, fat: 0, carbs: 0, meal_count: 0 };
+  const totalSets = Object.values(setsMap).reduce((t, sets) => t + sets.length, 0);
+  const totalMins = Object.values(setsMap).reduce(
+    (t, sets) => t + sets.reduce((s, r) => s + (Number(r.duration_min) || 0), 0), 0
+  );
 
   els.summaryCards.innerHTML = `
     <div class="summary-card">
@@ -415,28 +427,28 @@ async function renderSelectedDate() {
     <div class="summary-card">
       <span>Sleep</span>
       <strong>${sleep ? round(sleep.hours, 2) : "—"} h</strong>
-      <small>${sleep && sleep.quality ? `Quality ${sleep.quality}/5` : "No rating"}</small>
+      <small>${sleep ? "Logged" : "Not logged"}</small>
     </div>
     <div class="summary-card">
       <span>Exercise</span>
       <strong>${exercises.length}</strong>
-      <small>${totalSets} sets · ${round(totalMins, 1)} min</small>
+      <small>${totalSets} sets${totalMins > 0 ? ` · ${round(totalMins, 0)} min` : ""}</small>
     </div>
     <div class="summary-card">
       <span>Body</span>
-      <strong>${body && body.weight != null ? round(body.weight, 1) : "—"}</strong>
-      <small>${body && body.waist != null ? `Waist ${round(body.waist, 1)}` : "No waist"}</small>
+      <strong>${body && body.weight != null ? `${round(body.weight, 1)} lb` : "—"}</strong>
+      <small>${body && body.waist != null ? `${round(body.waist, 1)} in waist` : "No waist"}</small>
     </div>`;
 
   renderNutritionList(mealRows, daily);
   renderSleepList(sleep);
-  renderExerciseList(exercises);
+  renderExerciseList(exercises, setsMap);
   renderBodyList(body);
   fillSleepForm(sleep);
   fillBodyForm(body);
 }
 
-// ─── List render helpers (synchronous, data passed in) ────────────────────────
+// ─── List render helpers ──────────────────────────────────────────────────────
 function renderNutritionList(rows, nutrition) {
   if (!rows.length) {
     els.nutritionList.innerHTML = `<div class="empty-state">No meals logged for this day yet.</div>`;
@@ -444,11 +456,13 @@ function renderNutritionList(rows, nutrition) {
   }
   const records = rows.map(row => {
     const name = row.recipe_name || row.custom_name || "Meal";
+    const qty  = row.grams != null
+      ? `${round(row.grams, 0)} g`
+      : `${round(row.servings, 2)} serving(s)`;
     return `<article class="record">
       <div>
         <h4>${escapeHtml(capitalize(row.meal_type))}: ${escapeHtml(name)}</h4>
-        <p class="record-meta">${round(row.servings, 2)} serving(s) · ${round(row.calories, 0)} kcal · ${round(row.protein, 1)}g P · ${round(row.fat, 1)}g F · ${round(row.carbs, 1)}g C</p>
-        ${row.notes ? `<p>${escapeHtml(row.notes)}</p>` : ""}
+        <p class="record-meta">${qty} · ${round(row.calories, 0)} kcal · ${round(row.protein, 1)}g P · ${round(row.fat, 1)}g F · ${round(row.carbs, 1)}g C</p>
       </div>
       <button class="icon-danger" type="button" data-delete="nutrition" data-id="${row.id}">Delete</button>
     </article>`;
@@ -457,10 +471,12 @@ function renderNutritionList(rows, nutrition) {
     <div class="record">
       <div>
         <h4>Daily total</h4>
-        <p class="record-meta">${round(nutrition.calories, 0)} kcal · ${round(nutrition.protein, 1)}g P · ${round(nutrition.fat, 1)}g F · ${round(nutrition.carbs, 1)}g C · ${nutrition.meal_count} meal(s)</p>
+        <p class="record-meta">${round(daily_val(nutrition, "calories"), 0)} kcal · ${round(daily_val(nutrition, "protein"), 1)}g P · ${round(daily_val(nutrition, "fat"), 1)}g F · ${round(daily_val(nutrition, "carbs"), 1)}g C · ${nutrition.meal_count} meal(s)</p>
       </div>
     </div>${records}`;
 }
+
+function daily_val(n, k) { return Number(n?.[k]) || 0; }
 
 function renderSleepList(sleep) {
   if (!sleep) {
@@ -470,34 +486,40 @@ function renderSleepList(sleep) {
   els.sleepList.innerHTML = `<article class="record">
     <div>
       <h4>${round(sleep.hours, 2)} hours slept</h4>
-      <p class="record-meta">Quality: ${sleep.quality ? `${sleep.quality}/5` : "not rated"}</p>
-      ${sleep.notes ? `<p>${escapeHtml(sleep.notes)}</p>` : ""}
     </div>
     <button class="icon-danger" type="button" data-delete="sleep" data-id="${sleep.id}">Delete</button>
   </article>`;
 }
 
-function renderExerciseList(rows) {
-  if (!rows.length) {
+function renderExerciseList(exercises, setsMap) {
+  if (!exercises.length) {
     els.exerciseList.innerHTML = `<div class="empty-state">No exercises logged for this day yet.</div>`;
     return;
   }
-  els.exerciseList.innerHTML = rows.map(row => {
-    const strength = [
-      row.sets   ? `${row.sets} sets`              : "",
-      row.reps   ? `${row.reps} reps`              : "",
-      row.weight ? `${round(row.weight, 1)} weight` : ""
+  els.exerciseList.innerHTML = exercises.map(row => {
+    const sets         = setsMap[row.id] || [];
+    const trackingType = row.tracking_type || "weight";
+    let setsHtml = "";
+    if (sets.length) {
+      const badges = sets.map(s => {
+        const parts = [];
+        if (trackingType === "weight" && s.weight    != null) parts.push(`${round(s.weight, 1)} lb/kg`);
+        if (trackingType === "time"   && s.duration_min != null) parts.push(`${round(s.duration_min, 1)} min`);
+        if (s.reps != null) parts.push(`${s.reps} reps`);
+        return `<span class="set-badge">Set ${s.set_number}: ${parts.join(" × ") || "—"}</span>`;
+      }).join("");
+      setsHtml = `<div class="set-list">${badges}</div>`;
+    }
+    const extras = [
+      row.category ? escapeHtml(row.category) : "",
+      row.distance  ? `${round(row.distance, 2)} km/mi` : ""
     ].filter(Boolean).join(" · ");
-    const cardio = [
-      row.duration_min ? `${round(row.duration_min, 1)} min`  : "",
-      row.distance     ? `${round(row.distance, 2)} distance` : ""
-    ].filter(Boolean).join(" · ");
-    const details = [strength, cardio].filter(Boolean).join(" · ") || "Details not specified";
+
     return `<article class="record">
       <div>
         <h4>${escapeHtml(row.exercise_name)}</h4>
-        <p class="record-meta">${row.category ? `${escapeHtml(row.category)} · ` : ""}${escapeHtml(details)}</p>
-        ${row.notes ? `<p>${escapeHtml(row.notes)}</p>` : ""}
+        ${extras ? `<p class="record-meta">${extras}</p>` : ""}
+        ${setsHtml}
       </div>
       <button class="icon-danger" type="button" data-delete="exercise" data-id="${row.id}">Delete</button>
     </article>`;
@@ -510,14 +532,13 @@ function renderBodyList(body) {
     return;
   }
   const parts = [
-    body.weight != null ? `Weight: ${round(body.weight, 1)}` : "",
-    body.waist  != null ? `Waist: ${round(body.waist, 1)}`   : ""
+    body.weight != null ? `Weight: ${round(body.weight, 1)} lb` : "",
+    body.waist  != null ? `Waist: ${round(body.waist, 1)} in`  : ""
   ].filter(Boolean).join(" · ");
   els.bodyList.innerHTML = `<article class="record">
     <div>
       <h4>Body measurements</h4>
       <p class="record-meta">${parts || "No values recorded"}</p>
-      ${body.notes ? `<p>${escapeHtml(body.notes)}</p>` : ""}
     </div>
     <button class="icon-danger" type="button" data-delete="body" data-id="${body.id}">Delete</button>
   </article>`;
@@ -532,8 +553,8 @@ async function refreshRecipeModal() {
 
 function renderRecipeOptions(recipes) {
   const cur = els.recipeSelect.value;
-  els.recipeSelect.innerHTML = `<option value="">Custom entry</option>` +
-    recipes.map(r => `<option value="${r.id}">${escapeHtml(r.name)} (${round(r.calories, 0)} kcal/serving)</option>`).join("");
+  els.recipeSelect.innerHTML = `<option value="">Select a recipe…</option>` +
+    recipes.map(r => `<option value="${r.id}">${escapeHtml(r.name)} (${round(r.calories, 0)} kcal/srv)</option>`).join("");
   if (recipes.some(r => String(r.id) === cur)) els.recipeSelect.value = cur;
 }
 
@@ -546,8 +567,7 @@ function renderRecipeList(recipes) {
     <article class="record">
       <div>
         <h4>${escapeHtml(r.name)}</h4>
-        <p class="record-meta">${r.serving_size ? `${escapeHtml(r.serving_size)} · ` : ""}${round(r.calories, 0)} kcal · ${round(r.protein, 1)}g P · ${round(r.fat, 1)}g F · ${round(r.carbs, 1)}g C</p>
-        ${r.notes ? `<p>${escapeHtml(r.notes)}</p>` : ""}
+        <p class="record-meta">${round(r.calories, 0)} kcal · ${round(r.protein, 1)}g P · ${round(r.fat, 1)}g F · ${round(r.carbs, 1)}g C${r.grams_per_serving ? ` · ${r.grams_per_serving}g/srv` : ""}</p>
       </div>
       <button class="icon-danger" type="button" data-delete="recipe" data-id="${r.id}">Delete</button>
     </article>`).join("");
@@ -555,112 +575,258 @@ function renderRecipeList(recipes) {
 
 // ─── Exercise library modal ───────────────────────────────────────────────────
 async function refreshExerciseLibModal() {
-  exerciseLibrary = await dbQuery("SELECT id, name, category, notes FROM exercises ORDER BY name COLLATE NOCASE");
+  exerciseLibrary = await dbQuery(
+    "SELECT id, name, category, tracking_type, allow_sets_reps, allow_distance FROM exercises ORDER BY name COLLATE NOCASE"
+  );
   if (!exerciseLibrary.length) {
     els.exerciseLibList.innerHTML = `<div class="empty-state">No exercises in library yet.</div>`;
     return;
   }
-  els.exerciseLibList.innerHTML = exerciseLibrary.map(ex => `
-    <article class="record">
+  els.exerciseLibList.innerHTML = exerciseLibrary.map(ex => {
+    const flags = [
+      ex.tracking_type === "time" ? "Time-based" : "Weight-based",
+      ex.allow_sets_reps ? "Sets/reps"  : "",
+      ex.allow_distance  ? "Distance"   : ""
+    ].filter(Boolean).join(" · ");
+    return `<article class="record">
       <div>
         <h4>${escapeHtml(ex.name)}</h4>
-        <p class="record-meta">${ex.category ? escapeHtml(ex.category) : "No category"}${ex.notes ? ` · ${escapeHtml(ex.notes)}` : ""}</p>
+        <p class="record-meta">${ex.category ? `${escapeHtml(ex.category)} · ` : ""}${flags}</p>
       </div>
       <button class="icon-danger" type="button" data-delete="exercise-lib" data-id="${ex.id}">Delete</button>
-    </article>`).join("");
+    </article>`;
+  }).join("");
 }
 
 async function populateExerciseLibSelect() {
-  exerciseLibrary = await dbQuery("SELECT id, name, category FROM exercises ORDER BY name COLLATE NOCASE");
+  exerciseLibrary = await dbQuery(
+    "SELECT id, name, category, tracking_type, allow_sets_reps, allow_distance FROM exercises ORDER BY name COLLATE NOCASE"
+  );
+  const curLib   = els.exerciseLibSelect.value;
+  const curTrend = els.exerciseProgressSelect.value;
 
-  // Day-detail exercise dropdown
-  const curLib = els.exerciseLibSelect.value;
-  els.exerciseLibSelect.innerHTML = `<option value="">Custom…</option>` +
+  els.exerciseLibSelect.innerHTML = `<option value="">Select an exercise…</option>` +
     exerciseLibrary.map(e => `<option value="${e.id}">${escapeHtml(e.name)}</option>`).join("");
   if (exerciseLibrary.some(e => String(e.id) === curLib)) els.exerciseLibSelect.value = curLib;
 
-  // Trend view exercise picker (uses name as value, not id)
-  const curTrend = els.exerciseProgressSelect.value;
   els.exerciseProgressSelect.innerHTML = `<option value="">Pick an exercise…</option>` +
     exerciseLibrary.map(e => `<option value="${escapeHtml(e.name)}">${escapeHtml(e.name)}</option>`).join("");
   if (curTrend) els.exerciseProgressSelect.value = curTrend;
 }
 
-// ─── Form helpers ──────────────────────────────────────────────────────────────
-function fillSleepForm(sleep) {
-  els.sleepHours.value   = sleep ? sleep.hours : "";
-  els.sleepQuality.value = sleep && sleep.quality ? String(sleep.quality) : "";
-  els.sleepNotes.value   = sleep ? (sleep.notes || "") : "";
+// ─── Nutrition form helpers ───────────────────────────────────────────────────
+function nutritionIsCustomToggle() {
+  const isCustom = els.nutritionIsCustom.checked;
+  els.nutritionRecipeSection.style.display = isCustom ? "none" : "";
+  els.nutritionCustomSection.style.display = isCustom ? ""     : "none";
+  // Reset quantity toggle
+  selectedRecipe   = null;
+  nutritionByWeight = false;
+  els.nutritionQtyToggle.style.display = "none";
+  els.nutritionServingsRow.style.display = "";
+  els.nutritionGramsRow.style.display    = "none";
 }
 
-function fillBodyForm(body) {
-  els.bodyWeight.value = body && body.weight != null ? body.weight : "";
-  els.bodyWaist.value  = body && body.waist  != null ? body.waist  : "";
-  els.bodyNotes.value  = body ? (body.notes || "") : "";
-}
-
-async function fillMealMacrosFromRecipe() {
+async function onRecipeChange() {
   const id = nullableInt(els.recipeSelect.value);
-  if (!id) return;
+  if (!id) {
+    selectedRecipe   = null;
+    nutritionByWeight = false;
+    els.nutritionQtyToggle.style.display   = "none";
+    els.nutritionServingsRow.style.display = "";
+    els.nutritionGramsRow.style.display    = "none";
+    return;
+  }
   try {
-    const recipe = await dbOne("SELECT * FROM recipes WHERE id = ?", [id]);
-    if (!recipe) return;
-    const servings = numberOrDefault(els.servings.value, 1);
-    els.nutritionName.value = recipe.name;
-    els.mealCalories.value  = round(recipe.calories * servings, 0);
-    els.mealProtein.value   = round(recipe.protein  * servings, 1);
-    els.mealFat.value       = round(recipe.fat      * servings, 1);
-    els.mealCarbs.value     = round(recipe.carbs    * servings, 1);
+    selectedRecipe = await dbOne("SELECT * FROM recipes WHERE id = ?", [id]);
+    const allowWeight = selectedRecipe && selectedRecipe.allow_weight_logging;
+    els.nutritionQtyToggle.style.display = allowWeight ? "flex" : "none";
+    if (!allowWeight) {
+      nutritionByWeight = false;
+      els.nutritionServingsRow.style.display = "";
+      els.nutritionGramsRow.style.display    = "none";
+    }
   } catch (err) {
     console.error(err);
   }
 }
 
+function setNutritionQtyMode(byGrams) {
+  nutritionByWeight = byGrams;
+  els.qtyServingsBtn.classList.toggle("active", !byGrams);
+  els.qtyGramsBtn.classList.toggle("active",    byGrams);
+  els.nutritionServingsRow.style.display = byGrams ? "none" : "";
+  els.nutritionGramsRow.style.display    = byGrams ? ""     : "none";
+}
+
+// ─── Exercise form helpers ────────────────────────────────────────────────────
 function handleExerciseLibSelectChange() {
-  const id  = nullableInt(els.exerciseLibSelect.value);
-  const lib = id ? exerciseLibrary.find(e => e.id === id) : null;
-  if (lib) {
-    els.exerciseCustomLabel.style.display = "none";
-    els.exerciseName.value = "";
-    els.exerciseCategory.value = lib.category || "";
+  const id = nullableInt(els.exerciseLibSelect.value);
+  currentExercise = id ? (exerciseLibrary.find(e => e.id === id) || null) : null;
+  setCount = 1;
+
+  if (currentExercise && currentExercise.allow_sets_reps) {
+    els.exerciseSetsSection.style.display = "";
+    renderSetRows();
   } else {
-    els.exerciseCustomLabel.style.display = "";
-    els.exerciseCategory.value = "";
+    els.exerciseSetsSection.style.display = "none";
+    els.setRows.innerHTML = "";
+  }
+
+  els.exerciseDistanceRow.style.display =
+    currentExercise && currentExercise.allow_distance ? "" : "none";
+  if (els.exerciseDistance) els.exerciseDistance.value = "";
+}
+
+function renderSetRows() {
+  els.setRows.innerHTML = "";
+  for (let i = 1; i <= setCount; i++) {
+    els.setRows.appendChild(createSetRow(i));
   }
 }
 
-// ─── Form submit handlers ─────────────────────────────────────────────────────
+function createSetRow(num) {
+  const div = document.createElement("div");
+  div.className = "set-row";
+  div.dataset.setNum = num;
+
+  const trackingType = currentExercise?.tracking_type ?? "weight";
+  const valueField = trackingType === "weight"
+    ? `<label>Weight (lb/kg)<input type="number" min="0" step="0.5" class="set-weight" /></label>`
+    : `<label>Duration (min)<input type="number" min="0" step="0.5" class="set-duration" /></label>`;
+
+  div.innerHTML = `
+    <span class="set-num">Set ${num}</span>
+    ${valueField}
+    <label>Reps<input type="number" min="0" step="1" class="set-reps" /></label>
+    <button type="button" class="icon-danger remove-set-btn" data-set="${num}"
+      style="${setCount <= 1 ? "visibility:hidden" : ""}">×</button>`;
+  return div;
+}
+
+function addSetRow() {
+  setCount++;
+  // Show remove buttons on all rows now that we have >1
+  els.setRows.querySelectorAll(".remove-set-btn").forEach(b => { b.style.visibility = ""; });
+  els.setRows.appendChild(createSetRow(setCount));
+}
+
+function removeSetRow(setNumStr) {
+  const num = Number(setNumStr);
+  const row = els.setRows.querySelector(`.set-row[data-set-num="${num}"]`);
+  if (row) row.remove();
+  // Renumber remaining rows
+  setCount = 0;
+  els.setRows.querySelectorAll(".set-row").forEach(r => {
+    setCount++;
+    r.dataset.setNum = setCount;
+    r.querySelector(".set-num").textContent = `Set ${setCount}`;
+    const btn = r.querySelector(".remove-set-btn");
+    if (btn) {
+      btn.dataset.set = setCount;
+      btn.style.visibility = setCount <= 1 ? "hidden" : "";
+    }
+  });
+}
+
+function collectSets() {
+  const sets = [];
+  els.setRows.querySelectorAll(".set-row").forEach((row, idx) => {
+    const weightEl   = row.querySelector(".set-weight");
+    const durationEl = row.querySelector(".set-duration");
+    const repsEl     = row.querySelector(".set-reps");
+    sets.push({
+      set_number:   idx + 1,
+      weight:       weightEl   ? nullableNumber(weightEl.value)   : null,
+      duration_min: durationEl ? nullableNumber(durationEl.value) : null,
+      reps:         repsEl     ? nullableInt(repsEl.value)         : null
+    });
+  });
+  return sets;
+}
+
+// ─── Form fills ───────────────────────────────────────────────────────────────
+function fillSleepForm(sleep) {
+  els.sleepHours.value = sleep ? sleep.hours : "";
+}
+
+function fillBodyForm(body) {
+  els.bodyWeight.value = body && body.weight != null ? body.weight : "";
+  els.bodyWaist.value  = body && body.waist  != null ? body.waist  : "";
+}
+
+// ─── Submit handlers ──────────────────────────────────────────────────────────
 async function handleNutritionSubmit(event) {
   event.preventDefault();
-  const recipeId = nullableInt(els.recipeSelect.value);
-  const servings = numberOrDefault(els.servings.value, 1);
-  let calories = numberOrDefault(els.mealCalories.value, 0);
-  let protein  = numberOrDefault(els.mealProtein.value, 0);
-  let fat      = numberOrDefault(els.mealFat.value, 0);
-  let carbs    = numberOrDefault(els.mealCarbs.value, 0);
-  let name     = els.nutritionName.value.trim();
+  const isCustom = els.nutritionIsCustom.checked;
 
-  if (recipeId) {
-    const recipe = await dbOne("SELECT * FROM recipes WHERE id = ?", [recipeId]);
-    if (recipe) {
-      calories = recipe.calories * servings;
-      protein  = recipe.protein  * servings;
-      fat      = recipe.fat      * servings;
-      carbs    = recipe.carbs    * servings;
-      name     = name || recipe.name;
+  let recipeId, customName, calories, protein, fat, carbs, servings, grams;
+
+  if (isCustom) {
+    customName = els.nutritionName.value.trim() || "Custom meal";
+    const perSrv = {
+      cal:  numberOrDefault(els.mealCalories.value, 0),
+      pro:  numberOrDefault(els.mealProtein.value,  0),
+      fat:  numberOrDefault(els.mealFat.value,      0),
+      carb: numberOrDefault(els.mealCarbs.value,    0)
+    };
+    servings = numberOrDefault(els.servings.value, 1);
+    grams    = null;
+    recipeId = null;
+    calories = perSrv.cal  * servings;
+    protein  = perSrv.pro  * servings;
+    fat      = perSrv.fat  * servings;
+    carbs    = perSrv.carb * servings;
+
+    if (els.nutritionSaveToLib.checked && els.nutritionName.value.trim()) {
+      await dbRun(
+        `INSERT INTO recipes (name, calories, protein, fat, carbs, allow_weight_logging, updated_at)
+         VALUES (?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
+         ON CONFLICT(name) DO NOTHING`,
+        [customName, perSrv.cal, perSrv.pro, perSrv.fat, perSrv.carb]
+      ).catch(console.error);
+      await refreshRecipeModal();
     }
+  } else {
+    const id = nullableInt(els.recipeSelect.value);
+    if (!id) { alert("Please select a recipe, or check "Custom / one-time entry"."); return; }
+    const recipe = selectedRecipe || await dbOne("SELECT * FROM recipes WHERE id = ?", [id]);
+    if (!recipe) return;
+    recipeId   = recipe.id;
+    customName = recipe.name;
+
+    if (nutritionByWeight) {
+      grams    = numberOrDefault(els.nutritionGrams.value, 0);
+      servings = recipe.grams_per_serving ? grams / recipe.grams_per_serving : 1;
+    } else {
+      servings = numberOrDefault(els.servings.value, 1);
+      grams    = null;
+    }
+
+    calories = recipe.calories * servings;
+    protein  = recipe.protein  * servings;
+    fat      = recipe.fat      * servings;
+    carbs    = recipe.carbs    * servings;
   }
 
   try {
-    await dbRun(`INSERT INTO nutrition_logs
-      (date, meal_type, recipe_id, custom_name, servings, calories, protein, fat, carbs, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [selectedDate, els.mealType.value, recipeId, name || "Custom meal",
-       servings, calories, protein, fat, carbs, els.nutritionNotes.value.trim()]);
+    await dbRun(
+      `INSERT INTO nutrition_logs (date, meal_type, recipe_id, custom_name, servings, grams, calories, protein, fat, carbs)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [selectedDate, els.mealType.value, recipeId, customName,
+       servings, grams, calories, protein, fat, carbs]
+    );
     await recalculateDailyNutrition(selectedDate);
+    // Reset form
     els.nutritionForm.reset();
+    selectedRecipe   = null;
+    nutritionByWeight = false;
+    els.nutritionQtyToggle.style.display   = "none";
+    els.nutritionServingsRow.style.display = "";
+    els.nutritionGramsRow.style.display    = "none";
+    els.nutritionRecipeSection.style.display = "";
+    els.nutritionCustomSection.style.display = "none";
     els.servings.value = "1";
-    [els.mealCalories, els.mealProtein, els.mealFat, els.mealCarbs].forEach(inp => { inp.value = "0"; });
     setStatus("Saved");
     await renderAll();
   } catch (err) {
@@ -672,13 +838,13 @@ async function handleNutritionSubmit(event) {
 async function handleSleepSubmit(event) {
   event.preventDefault();
   try {
-    await dbRun(`INSERT INTO sleep_logs (date, hours, quality, notes, updated_at)
-      VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-      ON CONFLICT(date) DO UPDATE SET
-        hours = excluded.hours, quality = excluded.quality,
-        notes = excluded.notes, updated_at = CURRENT_TIMESTAMP`,
-      [selectedDate, numberOrDefault(els.sleepHours.value, 0),
-       nullableInt(els.sleepQuality.value), els.sleepNotes.value.trim()]);
+    await dbRun(
+      `INSERT INTO sleep_logs (date, hours, quality, notes, updated_at)
+       VALUES (?, ?, NULL, '', CURRENT_TIMESTAMP)
+       ON CONFLICT(date) DO UPDATE SET
+         hours = excluded.hours, updated_at = CURRENT_TIMESTAMP`,
+      [selectedDate, numberOrDefault(els.sleepHours.value, 0)]
+    );
     setStatus("Saved");
     await renderAll();
   } catch (err) {
@@ -689,26 +855,39 @@ async function handleSleepSubmit(event) {
 
 async function handleExerciseSubmit(event) {
   event.preventDefault();
-  const libId = nullableInt(els.exerciseLibSelect.value);
-  const lib   = libId ? exerciseLibrary.find(e => e.id === libId) : null;
-  const name  = lib ? lib.name : els.exerciseName.value.trim();
-  if (!name) { alert("Please enter an exercise name or select one from the library."); return; }
+  const id = nullableInt(els.exerciseLibSelect.value);
+  if (!id || !currentExercise) {
+    alert("Please select an exercise from the library.");
+    return;
+  }
+  const distance = nullableNumber(els.exerciseDistance?.value);
+  const sets     = currentExercise.allow_sets_reps ? collectSets() : [];
 
   try {
-    await dbRun(`INSERT INTO exercise_logs
-      (date, exercise_name, category, sets, reps, weight, duration_min, distance, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [selectedDate, name,
-       els.exerciseCategory.value.trim(),
-       nullableInt(els.exerciseSets.value),
-       nullableInt(els.exerciseReps.value),
-       nullableNumber(els.exerciseWeight.value),
-       nullableNumber(els.exerciseDuration.value),
-       nullableNumber(els.exerciseDistance.value),
-       els.exerciseNotes.value.trim()]);
-    els.exerciseForm.reset();
+    const logResult = await dbRun(
+      `INSERT INTO exercise_logs (date, exercise_id, exercise_name, category, distance, created_at)
+       VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+      [selectedDate, currentExercise.id, currentExercise.name,
+       currentExercise.category || "", distance]
+    );
+    const logId = logResult.meta?.last_row_id;
+
+    if (logId && sets.length > 0) {
+      await dbBatch(sets.map(s => ({
+        sql: `INSERT INTO exercise_sets (log_id, set_number, weight, reps, duration_min) VALUES (?, ?, ?, ?, ?)`,
+        params: [logId, s.set_number, s.weight, s.reps, s.duration_min]
+      })));
+    }
+
+    // Reset form
     els.exerciseLibSelect.value = "";
-    els.exerciseCustomLabel.style.display = ""; // show custom label again after reset
+    currentExercise = null;
+    setCount = 1;
+    els.exerciseSetsSection.style.display = "none";
+    els.exerciseDistanceRow.style.display = "none";
+    els.setRows.innerHTML = "";
+    if (els.exerciseDistance) els.exerciseDistance.value = "";
+
     setStatus("Saved");
     await renderSelectedDate();
   } catch (err) {
@@ -720,13 +899,13 @@ async function handleExerciseSubmit(event) {
 async function handleBodySubmit(event) {
   event.preventDefault();
   try {
-    await dbRun(`INSERT INTO body_measurements (date, weight, waist, notes, updated_at)
-      VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-      ON CONFLICT(date) DO UPDATE SET
-        weight = excluded.weight, waist = excluded.waist,
-        notes = excluded.notes, updated_at = CURRENT_TIMESTAMP`,
-      [selectedDate, nullableNumber(els.bodyWeight.value),
-       nullableNumber(els.bodyWaist.value), els.bodyNotes.value.trim()]);
+    await dbRun(
+      `INSERT INTO body_measurements (date, weight, waist, notes, updated_at)
+       VALUES (?, ?, ?, '', CURRENT_TIMESTAMP)
+       ON CONFLICT(date) DO UPDATE SET
+         weight = excluded.weight, waist = excluded.waist, updated_at = CURRENT_TIMESTAMP`,
+      [selectedDate, nullableNumber(els.bodyWeight.value), nullableNumber(els.bodyWaist.value)]
+    );
     setStatus("Saved");
     await renderSelectedDate();
   } catch (err) {
@@ -737,19 +916,25 @@ async function handleBodySubmit(event) {
 
 async function handleRecipeSubmit(event) {
   event.preventDefault();
+  const allowWeight      = els.recipeAllowWeight.checked;
+  const gramsPerServing  = allowWeight ? nullableNumber(els.recipeGramsPerServing.value) : null;
   try {
-    await dbRun(`INSERT INTO recipes (name, serving_size, calories, protein, fat, carbs, notes, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-      ON CONFLICT(name) DO UPDATE SET
-        serving_size = excluded.serving_size, calories = excluded.calories,
-        protein = excluded.protein, fat = excluded.fat, carbs = excluded.carbs,
-        notes = excluded.notes, updated_at = CURRENT_TIMESTAMP`,
-      [els.recipeName.value.trim(), els.recipeServingSize.value.trim(),
+    await dbRun(
+      `INSERT INTO recipes (name, calories, protein, fat, carbs, allow_weight_logging, grams_per_serving, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+       ON CONFLICT(name) DO UPDATE SET
+         calories = excluded.calories, protein = excluded.protein,
+         fat = excluded.fat, carbs = excluded.carbs,
+         allow_weight_logging = excluded.allow_weight_logging,
+         grams_per_serving = excluded.grams_per_serving,
+         updated_at = CURRENT_TIMESTAMP`,
+      [els.recipeName.value.trim(),
        numberOrDefault(els.recipeCalories.value, 0), numberOrDefault(els.recipeProtein.value, 0),
-       numberOrDefault(els.recipeFat.value, 0), numberOrDefault(els.recipeCarbs.value, 0),
-       els.recipeNotes.value.trim()]);
+       numberOrDefault(els.recipeFat.value, 0),      numberOrDefault(els.recipeCarbs.value, 0),
+       allowWeight ? 1 : 0, gramsPerServing]
+    );
     els.recipeForm.reset();
-    [els.recipeCalories, els.recipeProtein, els.recipeFat, els.recipeCarbs].forEach(inp => { inp.value = "0"; });
+    els.recipeGramsPerServingLabel.style.display = "none";
     setStatus("Saved");
     await refreshRecipeModal();
   } catch (err) {
@@ -763,12 +948,20 @@ async function handleExerciseLibSubmit(event) {
   const name = els.exerciseLibName.value.trim();
   if (!name) return;
   try {
-    await dbRun(`INSERT INTO exercises (name, category, notes, created_at)
-      VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-      ON CONFLICT(name) DO UPDATE SET
-        category = excluded.category, notes = excluded.notes`,
-      [name, els.exerciseLibCategory.value.trim(), els.exerciseLibNotes.value.trim()]);
+    await dbRun(
+      `INSERT INTO exercises (name, category, tracking_type, allow_sets_reps, allow_distance, created_at)
+       VALUES (?, '', ?, ?, ?, CURRENT_TIMESTAMP)
+       ON CONFLICT(name) DO UPDATE SET
+         tracking_type = excluded.tracking_type,
+         allow_sets_reps = excluded.allow_sets_reps,
+         allow_distance = excluded.allow_distance`,
+      [name,
+       els.exerciseLibType.value,
+       els.exerciseLibAllowSetsReps.checked ? 1 : 0,
+       els.exerciseLibAllowDistance.checked ? 1 : 0]
+    );
     els.exerciseLibForm.reset();
+    els.exerciseLibAllowSetsReps.checked = true; // restore default
     setStatus("Saved");
     await refreshExerciseLibModal();
     await populateExerciseLibSelect();
@@ -791,20 +984,24 @@ async function handleDeleteButtons(event) {
     } else if (type === "sleep") {
       await dbRun("DELETE FROM sleep_logs WHERE id = ?", [id]);
     } else if (type === "exercise") {
-      await dbRun("DELETE FROM exercise_logs WHERE id = ?", [id]);
+      // Manually cascade since SQLite foreign_keys may be off
+      await dbBatch([
+        { sql: "DELETE FROM exercise_sets WHERE log_id = ?", params: [id] },
+        { sql: "DELETE FROM exercise_logs WHERE id = ?",     params: [id] }
+      ]);
     } else if (type === "body") {
       await dbRun("DELETE FROM body_measurements WHERE id = ?", [id]);
     } else if (type === "recipe") {
       await dbRun("DELETE FROM recipes WHERE id = ?", [id]);
       await refreshRecipeModal();
       setStatus("Deleted");
-      return; // modal stays open — skip renderAll
+      return;
     } else if (type === "exercise-lib") {
       await dbRun("DELETE FROM exercises WHERE id = ?", [id]);
       await refreshExerciseLibModal();
       await populateExerciseLibSelect();
       setStatus("Deleted");
-      return; // modal stays open — skip renderAll
+      return;
     }
     setStatus("Deleted");
     await renderAll();
@@ -814,23 +1011,26 @@ async function handleDeleteButtons(event) {
   }
 }
 
-// ─── Data mutations ────────────────────────────────────────────────────────────
+// ─── Data mutations ───────────────────────────────────────────────────────────
 async function recalculateDailyNutrition(date) {
-  const totals = await dbOne(`SELECT COUNT(*) AS meal_count,
-    COALESCE(SUM(calories),0) AS calories, COALESCE(SUM(protein),0) AS protein,
-    COALESCE(SUM(fat),0) AS fat, COALESCE(SUM(carbs),0) AS carbs
-    FROM nutrition_logs WHERE date = ?`, [date]);
-
+  const totals = await dbOne(
+    `SELECT COUNT(*) AS meal_count,
+       COALESCE(SUM(calories), 0) AS calories, COALESCE(SUM(protein), 0) AS protein,
+       COALESCE(SUM(fat), 0) AS fat,           COALESCE(SUM(carbs),   0) AS carbs
+     FROM nutrition_logs WHERE date = ?`, [date]
+  );
   if (!totals || Number(totals.meal_count) === 0) {
     await dbRun("DELETE FROM daily_nutrition WHERE date = ?", [date]);
     return;
   }
-  await dbRun(`INSERT INTO daily_nutrition (date, calories, protein, fat, carbs, meal_count, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-    ON CONFLICT(date) DO UPDATE SET
-      calories = excluded.calories, protein = excluded.protein, fat = excluded.fat,
-      carbs = excluded.carbs, meal_count = excluded.meal_count, updated_at = CURRENT_TIMESTAMP`,
-    [date, totals.calories, totals.protein, totals.fat, totals.carbs, totals.meal_count]);
+  await dbRun(
+    `INSERT INTO daily_nutrition (date, calories, protein, fat, carbs, meal_count, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+     ON CONFLICT(date) DO UPDATE SET
+       calories = excluded.calories, protein = excluded.protein, fat = excluded.fat,
+       carbs = excluded.carbs, meal_count = excluded.meal_count, updated_at = CURRENT_TIMESTAMP`,
+    [date, totals.calories, totals.protein, totals.fat, totals.carbs, totals.meal_count]
+  );
 }
 
 async function addSampleData() {
@@ -840,37 +1040,71 @@ async function addSampleData() {
 
     // Exercise library
     await dbBatch([
-      { sql: `INSERT INTO exercises (name, category, notes, created_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT(name) DO NOTHING`, params: ["Goblet squat", "Legs", ""] },
-      { sql: `INSERT INTO exercises (name, category, notes, created_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT(name) DO NOTHING`, params: ["Incline walk", "Cardio", ""] },
-      { sql: `INSERT INTO exercises (name, category, notes, created_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT(name) DO NOTHING`, params: ["Bench press", "Push", ""] }
+      { sql: `INSERT INTO exercises (name, category, tracking_type, allow_sets_reps, allow_distance, created_at) VALUES (?, 'Legs',  'weight', 1, 0, CURRENT_TIMESTAMP) ON CONFLICT(name) DO NOTHING`, params: ["Goblet squat"] },
+      { sql: `INSERT INTO exercises (name, category, tracking_type, allow_sets_reps, allow_distance, created_at) VALUES (?, 'Cardio','time',   0, 1, CURRENT_TIMESTAMP) ON CONFLICT(name) DO NOTHING`, params: ["Incline walk"] },
+      { sql: `INSERT INTO exercises (name, category, tracking_type, allow_sets_reps, allow_distance, created_at) VALUES (?, 'Push',  'weight', 1, 0, CURRENT_TIMESTAMP) ON CONFLICT(name) DO NOTHING`, params: ["Bench press"] }
     ]);
 
     // Recipes
     await dbBatch([
-      { sql: `INSERT INTO recipes (name, serving_size, calories, protein, fat, carbs, notes, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT(name) DO NOTHING`, params: ["Greek yogurt bowl", "1 bowl", 420, 38, 8, 48, "Yogurt, berries, oats, honey"] },
-      { sql: `INSERT INTO recipes (name, serving_size, calories, protein, fat, carbs, notes, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT(name) DO NOTHING`, params: ["Chicken rice bowl", "1 bowl", 690, 55, 18, 76, "Chicken breast, rice, vegetables"] },
-      { sql: `INSERT INTO recipes (name, serving_size, calories, protein, fat, carbs, notes, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT(name) DO NOTHING`, params: ["Turkey wrap", "1 wrap", 520, 42, 16, 48, "Turkey, tortilla, cheese, vegetables"] }
+      { sql: `INSERT INTO recipes (name, calories, protein, fat, carbs, allow_weight_logging, grams_per_serving, updated_at) VALUES (?, 420, 38, 8, 48, 0, NULL, CURRENT_TIMESTAMP) ON CONFLICT(name) DO NOTHING`, params: ["Greek yogurt bowl"] },
+      { sql: `INSERT INTO recipes (name, calories, protein, fat, carbs, allow_weight_logging, grams_per_serving, updated_at) VALUES (?, 690, 55, 18, 76, 1, 400,  CURRENT_TIMESTAMP) ON CONFLICT(name) DO NOTHING`, params: ["Chicken rice bowl"] },
+      { sql: `INSERT INTO recipes (name, calories, protein, fat, carbs, allow_weight_logging, grams_per_serving, updated_at) VALUES (?, 520, 42, 16, 48, 0, NULL, CURRENT_TIMESTAMP) ON CONFLICT(name) DO NOTHING`, params: ["Turkey wrap"] }
     ]);
 
-    const [yogurt, wrap] = await Promise.all([
-      dbOne("SELECT * FROM recipes WHERE name = ?", ["Greek yogurt bowl"]),
-      dbOne("SELECT * FROM recipes WHERE name = ?", ["Turkey wrap"])
+    await populateExerciseLibSelect();
+    await refreshRecipeModal();
+
+    const [yogurt, wrap, squat, walk] = await Promise.all([
+      dbOne("SELECT * FROM recipes WHERE name = ?",   ["Greek yogurt bowl"]),
+      dbOne("SELECT * FROM recipes WHERE name = ?",   ["Turkey wrap"]),
+      dbOne("SELECT * FROM exercises WHERE name = ?", ["Goblet squat"]),
+      dbOne("SELECT * FROM exercises WHERE name = ?", ["Incline walk"])
     ]);
+
+    // Meals
+    const nutritionInserts = [];
+    if (yogurt) nutritionInserts.push(
+      dbRun(`INSERT INTO nutrition_logs (date, meal_type, recipe_id, custom_name, servings, grams, calories, protein, fat, carbs) VALUES (?, 'breakfast', ?, ?, 1, NULL, ?, ?, ?, ?)`,
+        [today, yogurt.id, yogurt.name, yogurt.calories, yogurt.protein, yogurt.fat, yogurt.carbs])
+    );
+    if (wrap) nutritionInserts.push(
+      dbRun(`INSERT INTO nutrition_logs (date, meal_type, recipe_id, custom_name, servings, grams, calories, protein, fat, carbs) VALUES (?, 'lunch', ?, ?, 1, NULL, ?, ?, ?, ?)`,
+        [today, wrap.id, wrap.name, wrap.calories, wrap.protein, wrap.fat, wrap.carbs])
+    );
+
+    // Exercise logs with sets
+    let sqLogId = null, walkLogId = null;
+    if (squat) {
+      const r = await dbRun(
+        `INSERT INTO exercise_logs (date, exercise_id, exercise_name, category, distance) VALUES (?, ?, ?, ?, NULL)`,
+        [today, squat.id, squat.name, squat.category || "Legs"]
+      );
+      sqLogId = r.meta?.last_row_id;
+    }
+    if (walk) {
+      const r = await dbRun(
+        `INSERT INTO exercise_logs (date, exercise_id, exercise_name, category, distance) VALUES (?, ?, ?, ?, 1.2)`,
+        [today, walk.id, walk.name, walk.category || "Cardio"]
+      );
+      walkLogId = r.meta?.last_row_id;
+    }
+
+    const setInserts = [];
+    if (sqLogId) setInserts.push(
+      { sql: `INSERT INTO exercise_sets (log_id, set_number, weight, reps) VALUES (?, 1, 40, 10)`, params: [sqLogId] },
+      { sql: `INSERT INTO exercise_sets (log_id, set_number, weight, reps) VALUES (?, 2, 40, 10)`, params: [sqLogId] },
+      { sql: `INSERT INTO exercise_sets (log_id, set_number, weight, reps) VALUES (?, 3, 42.5, 8)`, params: [sqLogId] }
+    );
 
     await Promise.all([
-      yogurt ? dbRun(`INSERT INTO nutrition_logs (date, meal_type, recipe_id, custom_name, servings, calories, protein, fat, carbs, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [today, "breakfast", yogurt.id, yogurt.name, 1, yogurt.calories, yogurt.protein, yogurt.fat, yogurt.carbs, "Sample breakfast"]) : Promise.resolve(),
-      wrap ? dbRun(`INSERT INTO nutrition_logs (date, meal_type, recipe_id, custom_name, servings, calories, protein, fat, carbs, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [today, "lunch", wrap.id, wrap.name, 1, wrap.calories, wrap.protein, wrap.fat, wrap.carbs, "Sample lunch"]) : Promise.resolve(),
-      dbRun(`INSERT INTO sleep_logs (date, hours, quality, notes, updated_at) VALUES (?, 7.5, 4, 'Sample sleep log', CURRENT_TIMESTAMP) ON CONFLICT(date) DO UPDATE SET hours=excluded.hours, quality=excluded.quality, notes=excluded.notes, updated_at=CURRENT_TIMESTAMP`, [today]),
-      dbRun(`INSERT INTO exercise_logs (date, exercise_name, category, sets, reps, weight, duration_min, distance, notes) VALUES (?, 'Goblet squat', 'Legs', 3, 10, 40, NULL, NULL, 'Sample strength entry')`, [today]),
-      dbRun(`INSERT INTO exercise_logs (date, exercise_name, category, sets, reps, weight, duration_min, distance, notes) VALUES (?, 'Incline walk', 'Cardio', NULL, NULL, NULL, 20, 1.2, 'Sample cardio entry')`, [today]),
-      dbRun(`INSERT INTO body_measurements (date, weight, waist, notes, updated_at) VALUES (?, 80.5, 85.0, 'Sample measurement', CURRENT_TIMESTAMP) ON CONFLICT(date) DO UPDATE SET weight=excluded.weight, waist=excluded.waist, notes=excluded.notes, updated_at=CURRENT_TIMESTAMP`, [today])
+      ...nutritionInserts,
+      setInserts.length ? dbBatch(setInserts) : Promise.resolve(),
+      dbRun(`INSERT INTO sleep_logs (date, hours, quality, notes, updated_at) VALUES (?, 7.5, NULL, '', CURRENT_TIMESTAMP) ON CONFLICT(date) DO UPDATE SET hours=excluded.hours, updated_at=CURRENT_TIMESTAMP`, [today]),
+      dbRun(`INSERT INTO body_measurements (date, weight, waist, notes, updated_at) VALUES (?, 175.5, 32.0, '', CURRENT_TIMESTAMP) ON CONFLICT(date) DO UPDATE SET weight=excluded.weight, waist=excluded.waist, updated_at=CURRENT_TIMESTAMP`, [today])
     ]);
 
     await recalculateDailyNutrition(today);
-    await populateExerciseLibSelect();
-    await refreshRecipeModal();
     setStatus("Sample data added");
     await renderAll();
   } catch (err) {
@@ -879,7 +1113,7 @@ async function addSampleData() {
   }
 }
 
-// ─── Trends view ───────────────────────────────────────────────────────────────
+// ─── Trends view ──────────────────────────────────────────────────────────────
 async function renderTrendsView() {
   const todayKey  = formatDateKey(new Date());
   const startDate = dateSpineStart(todayKey, trendDays);
@@ -897,9 +1131,9 @@ async function renderTrendsView() {
     { label: "Calories",       color: "#f78166", rows: nutRows,   key: "calories", unit: " kcal" },
     { label: "Protein (g)",    color: "#7ee787", rows: nutRows,   key: "protein",  unit: "g" },
     { label: "Sleep (hours)",  color: "#79c0ff", rows: sleepRows, key: "hours",    unit: "h" },
-    { label: "Body Weight",    color: "#e3b341", rows: bodyRows,  key: "weight",   unit: "" },
-    { label: "Waist",          color: "#d2a8ff", rows: bodyRows,  key: "waist",    unit: "" },
-    { label: "Exercise Count", color: "#58a6ff", rows: exRows,    key: "count",    unit: "" }
+    { label: "Body Weight (lb)", color: "#e3b341", rows: bodyRows, key: "weight", unit: " lb" },
+    { label: "Waist (in)",     color: "#d2a8ff", rows: bodyRows,  key: "waist",   unit: " in" },
+    { label: "Exercise Count", color: "#58a6ff", rows: exRows,    key: "count",   unit: "" }
   ];
 
   els.chartsGrid.innerHTML = "";
@@ -930,13 +1164,15 @@ async function renderExerciseProgressChart(exerciseName) {
   const todayKey  = formatDateKey(new Date());
   const startDate = dateSpineStart(todayKey, trendDays);
 
+  // Get per-set max weight or total sets per day via exercise_sets JOIN
   const rows = await dbQuery(`
-    SELECT date,
-      MAX(CASE WHEN weight > 0 THEN weight ELSE NULL END) AS max_weight,
-      SUM(COALESCE(sets, 0)) AS total_sets
-    FROM exercise_logs
-    WHERE exercise_name = ? AND date >= ? AND date <= ?
-    GROUP BY date ORDER BY date`,
+    SELECT el.date,
+      MAX(es.weight) AS max_weight,
+      SUM(CASE WHEN es.id IS NOT NULL THEN 1 ELSE 0 END) AS total_sets
+    FROM exercise_logs el
+    LEFT JOIN exercise_sets es ON es.log_id = el.id
+    WHERE el.exercise_name = ? AND el.date >= ? AND el.date <= ?
+    GROUP BY el.date ORDER BY el.date`,
     [exerciseName, startDate, todayKey]);
 
   const hasWeight = rows.some(r => r.max_weight != null);
@@ -953,7 +1189,7 @@ async function renderExerciseProgressChart(exerciseName) {
   });
 }
 
-// ─── SVG line chart ────────────────────────────────────────────────────────────
+// ─── SVG line chart ───────────────────────────────────────────────────────────
 function renderLineChart(container, points, { color = "#58a6ff", unit = "", height = 140 } = {}) {
   const nonNull = points.filter(p => p.value !== null);
   if (!nonNull.length) {
@@ -972,11 +1208,10 @@ function renderLineChart(container, points, { color = "#58a6ff", unit = "", heig
   let maxV = Math.max(...vals);
   if (minV === maxV) { minV -= 1; maxV += 1; }
 
-  const sx = i  => pad.l + (N < 2 ? cW / 2 : (i / (N - 1)) * cW);
-  const sy = v  => pad.t + cH - ((v - minV) / (maxV - minV)) * cH;
-  const f  = n  => n.toFixed(1);
+  const sx = i => pad.l + (N < 2 ? cW / 2 : (i / (N - 1)) * cW);
+  const sy = v => pad.t + cH - ((v - minV) / (maxV - minV)) * cH;
+  const f  = n => n.toFixed(1);
 
-  // Y-axis ticks
   const yTicks = [0, 0.5, 1].map(t => {
     const v = minV + t * (maxV - minV);
     const y = sy(v);
@@ -984,7 +1219,6 @@ function renderLineChart(container, points, { color = "#58a6ff", unit = "", heig
             <text x="${f(pad.l - 4)}" y="${f(y + 4)}" class="chart-tick" text-anchor="end">${round(v, 0)}</text>`;
   }).join("");
 
-  // X-axis ticks (up to 5)
   const xCount = Math.min(5, N);
   const xIdxs  = xCount <= 1 ? [0] : Array.from({ length: xCount }, (_, i) =>
     Math.min(Math.round(i * (N - 1) / (xCount - 1)), N - 1)
@@ -993,7 +1227,6 @@ function renderLineChart(container, points, { color = "#58a6ff", unit = "", heig
     `<text x="${f(sx(i))}" y="${H - 4}" class="chart-tick" text-anchor="middle">${points[i].date.slice(5).replace("-", "/")}</text>`
   ).join("");
 
-  // Build line + area paths (handling null gaps)
   let linePath = "", areaPath = "";
   let seg = [];
 
@@ -1001,7 +1234,7 @@ function renderLineChart(container, points, { color = "#58a6ff", unit = "", heig
     if (!seg.length) return;
     const base = f(sy(minV));
     areaPath += `M ${f(seg[0].x)} ${base} ` + seg.map(p => `L ${f(p.x)} ${f(p.y)} `).join("") + `L ${f(seg.at(-1).x)} ${base} Z `;
-    linePath += `M ${f(seg[0].x)} ${f(seg[0].y)} ` + seg.slice(1).map(p => `L ${f(p.x)} ${f(p.y)} `).join("");
+    linePath  += `M ${f(seg[0].x)} ${f(seg[0].y)} ` + seg.slice(1).map(p => `L ${f(p.x)} ${f(p.y)} `).join("");
     seg = [];
   };
 
@@ -1011,14 +1244,12 @@ function renderLineChart(container, points, { color = "#58a6ff", unit = "", heig
   });
   flushSeg();
 
-  // Data point circles (native title tooltip)
   const circles = points.map((p, i) => p.value === null ? "" :
     `<circle cx="${f(sx(i))}" cy="${f(sy(p.value))}" r="3.5" fill="${color}" stroke="var(--panel)" stroke-width="1.5">
       <title>${p.date}: ${round(p.value, 1)}${unit}</title>
     </circle>`
   ).join("");
 
-  // Unique gradient ID per color
   const gid = `g${color.replace(/[^a-z0-9]/gi, "")}`;
 
   container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" class="line-chart">
@@ -1038,15 +1269,12 @@ function renderLineChart(container, points, { color = "#58a6ff", unit = "", heig
   </svg>`;
 }
 
-// ─── Date utilities ────────────────────────────────────────────────────────────
+// ─── Date utilities ───────────────────────────────────────────────────────────
 function buildDateSpine(startDate, endDate) {
   const spine = [];
   const cur   = new Date(`${startDate}T12:00:00`);
   const end   = new Date(`${endDate}T12:00:00`);
-  while (cur <= end) {
-    spine.push(formatDateKey(cur));
-    cur.setDate(cur.getDate() + 1);
-  }
+  while (cur <= end) { spine.push(formatDateKey(cur)); cur.setDate(cur.getDate() + 1); }
   return spine;
 }
 
@@ -1056,7 +1284,7 @@ function dateSpineStart(endDate, days) {
   return formatDateKey(d);
 }
 
-// ─── Utilities ─────────────────────────────────────────────────────────────────
+// ─── Utilities ────────────────────────────────────────────────────────────────
 function setStatus(text, warning = false) {
   els.dbStatus.textContent = text;
   els.dbStatus.classList.toggle("warn", Boolean(warning));
@@ -1076,13 +1304,13 @@ function numberOrDefault(value, fallback) {
 }
 
 function nullableNumber(value) {
-  if (value === "" || value === null || value === undefined) return null;
+  if (value === "" || value == null) return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
 
 function nullableInt(value) {
-  if (value === "" || value === null || value === undefined) return null;
+  if (value === "" || value == null) return null;
   const n = parseInt(value, 10);
   return Number.isFinite(n) ? n : null;
 }
@@ -1090,8 +1318,9 @@ function nullableInt(value) {
 function round(value, decimals = 1) {
   const n      = Number(value) || 0;
   const factor = 10 ** decimals;
-  const r      = Math.round(n * factor) / factor;
-  return decimals === 0 ? String(Math.round(r)) : String(r);
+  return decimals === 0
+    ? String(Math.round(n))
+    : String(Math.round(n * factor) / factor);
 }
 
 function capitalize(value) {

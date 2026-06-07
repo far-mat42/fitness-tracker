@@ -47,11 +47,6 @@
         </div>
         <div class="toolbar">
           <button id="todayBtn" type="button" class="secondary">Today</button>
-          <div class="segmented" role="group" aria-label="Calendar data layer">
-            <button class="view-btn active" type="button" data-view="nutrition">Nutrition</button>
-            <button class="view-btn" type="button" data-view="sleep">Sleep</button>
-            <button class="view-btn" type="button" data-view="exercise">Exercise</button>
-          </div>
         </div>
         <div id="legend" class="legend" aria-label="Calendar legend"></div>
         <div id="calendar" class="calendar" aria-label="Monthly calendar"></div>
@@ -74,123 +69,133 @@
           <button class="tab-btn" type="button" data-tab="bodyTab">Body</button>
         </div>
 
-        <!-- Meals -->
+        <!-- ── Meals ──────────────────────────────────────────── -->
         <section id="nutritionTab" class="tab-section active" aria-labelledby="nutritionHeading">
           <h3 id="nutritionHeading">Add meal</h3>
           <form id="nutritionForm" class="grid-form">
+
             <label>Meal type
               <select id="mealType">
                 <option value="breakfast">Breakfast</option>
                 <option value="lunch">Lunch</option>
                 <option value="dinner">Dinner</option>
                 <option value="snack">Snack</option>
-                <option value="meal">Meal</option>
               </select>
             </label>
-            <label>Saved recipe
-              <select id="recipeSelect"><option value="">Custom entry</option></select>
+
+            <label class="checkbox-label">
+              <input type="checkbox" id="nutritionIsCustom" />
+              Custom / one-time entry
             </label>
-            <label>Custom name
-              <input id="nutritionName" type="text" placeholder="e.g. Turkey wrap" />
-            </label>
-            <label>Servings
-              <input id="servings" type="number" min="0.01" step="0.01" value="1" />
-            </label>
-            <label>Calories
-              <input id="mealCalories" type="number" min="0" step="1" value="0" />
-            </label>
-            <label>Protein (g)
-              <input id="mealProtein" type="number" min="0" step="0.1" value="0" />
-            </label>
-            <label>Fat (g)
-              <input id="mealFat" type="number" min="0" step="0.1" value="0" />
-            </label>
-            <label>Carbs (g)
-              <input id="mealCarbs" type="number" min="0" step="0.1" value="0" />
-            </label>
-            <label class="full-width">Notes
-              <textarea id="nutritionNotes" rows="2" placeholder="Optional"></textarea>
-            </label>
-            <button type="submit">Log meal</button>
+
+            <!-- Recipe path (default) -->
+            <div id="nutritionRecipeSection" class="full-width">
+              <label>Recipe
+                <select id="recipeSelect"><option value="">Select a recipe…</option></select>
+              </label>
+            </div>
+
+            <!-- Custom path (shown when nutritionIsCustom is checked) -->
+            <div id="nutritionCustomSection" class="full-width" style="display:none">
+              <div class="sub-grid">
+                <label class="full-width">Name
+                  <input id="nutritionName" type="text" placeholder="e.g. Oatmeal" />
+                </label>
+                <label>Calories / serving
+                  <input id="mealCalories" type="number" min="0" step="1" value="0" />
+                </label>
+                <label>Protein (g)
+                  <input id="mealProtein" type="number" min="0" step="0.1" value="0" />
+                </label>
+                <label>Carbs (g)
+                  <input id="mealCarbs" type="number" min="0" step="0.1" value="0" />
+                </label>
+                <label>Fat (g)
+                  <input id="mealFat" type="number" min="0" step="0.1" value="0" />
+                </label>
+              </div>
+              <label class="checkbox-label" style="margin-top:0.6rem">
+                <input type="checkbox" id="nutritionSaveToLib" />
+                Save to recipe library
+              </label>
+            </div>
+
+            <!-- Quantity (always shown) -->
+            <div id="nutritionQuantitySection" class="full-width">
+              <div id="nutritionQtyToggle" class="qty-toggle" style="display:none">
+                <button type="button" id="qtyServingsBtn" class="qty-btn active">Servings</button>
+                <button type="button" id="qtyGramsBtn" class="qty-btn">Grams</button>
+              </div>
+              <div id="nutritionServingsRow">
+                <label>Servings
+                  <input id="servings" type="number" min="0.01" step="0.01" value="1" />
+                </label>
+              </div>
+              <div id="nutritionGramsRow" style="display:none">
+                <label>Grams
+                  <input id="nutritionGrams" type="number" min="0" step="1" />
+                </label>
+              </div>
+            </div>
+
+            <button type="submit" class="full-width">Log meal</button>
           </form>
           <div id="nutritionList" class="list"></div>
         </section>
 
-        <!-- Sleep -->
+        <!-- ── Sleep ─────────────────────────────────────────── -->
         <section id="sleepTab" class="tab-section" aria-labelledby="sleepHeading">
           <h3 id="sleepHeading">Log sleep</h3>
           <form id="sleepForm" class="grid-form">
             <label>Hours slept
               <input id="sleepHours" type="number" min="0" max="24" step="0.25" placeholder="7.5" required />
             </label>
-            <label>Quality
-              <select id="sleepQuality">
-                <option value="">Not rated</option>
-                <option value="1">1 — Very poor</option>
-                <option value="2">2 — Poor</option>
-                <option value="3">3 — Okay</option>
-                <option value="4">4 — Good</option>
-                <option value="5">5 — Great</option>
-              </select>
-            </label>
-            <label class="full-width">Notes
-              <textarea id="sleepNotes" rows="2" placeholder="Optional"></textarea>
-            </label>
             <button type="submit">Save sleep</button>
           </form>
           <div id="sleepList" class="list"></div>
         </section>
 
-        <!-- Exercise -->
+        <!-- ── Exercise ───────────────────────────────────────── -->
         <section id="exerciseTab" class="tab-section" aria-labelledby="exerciseHeading">
           <h3 id="exerciseHeading">Log exercise</h3>
           <form id="exerciseForm" class="grid-form">
+
             <label class="full-width">Exercise
-              <select id="exerciseLibSelect"><option value="">Custom…</option></select>
+              <select id="exerciseLibSelect" required>
+                <option value="">Select an exercise…</option>
+              </select>
             </label>
-            <label id="exerciseCustomLabel">Name
-              <input id="exerciseName" type="text" placeholder="e.g. Bench press" />
+
+            <!-- Per-set section (shown when exercise allows sets/reps) -->
+            <div id="exerciseSetsSection" class="full-width" style="display:none">
+              <div class="sets-header">
+                <span class="sets-label">Sets</span>
+                <button type="button" id="addSetBtn" class="secondary">+ Add set</button>
+              </div>
+              <div id="setRows" class="set-rows"></div>
+            </div>
+
+            <!-- Distance (shown when exercise allows distance) -->
+            <label id="exerciseDistanceRow" style="display:none">Distance (km / mi)
+              <input id="exerciseDistance" type="number" min="0" step="0.01" />
             </label>
-            <label>Category
-              <input id="exerciseCategory" type="text" placeholder="e.g. Push, cardio" />
-            </label>
-            <label>Sets
-              <input id="exerciseSets" type="number" min="0" step="1" />
-            </label>
-            <label>Reps
-              <input id="exerciseReps" type="number" min="0" step="1" />
-            </label>
-            <label>Weight
-              <input id="exerciseWeight" type="number" min="0" step="0.5" placeholder="lb or kg" />
-            </label>
-            <label>Duration (min)
-              <input id="exerciseDuration" type="number" min="0" step="0.5" />
-            </label>
-            <label>Distance
-              <input id="exerciseDistance" type="number" min="0" step="0.01" placeholder="km / mi" />
-            </label>
-            <label class="full-width">Notes
-              <textarea id="exerciseNotes" rows="2" placeholder="Optional"></textarea>
-            </label>
-            <button type="submit">Log exercise</button>
+
+            <button type="submit" class="full-width">Log exercise</button>
           </form>
           <div id="exerciseList" class="list"></div>
         </section>
 
-        <!-- Body measurements -->
+        <!-- ── Body measurements ─────────────────────────────── -->
         <section id="bodyTab" class="tab-section" aria-labelledby="bodyHeading">
           <h3 id="bodyHeading">Body measurements</h3>
           <form id="bodyForm" class="grid-form">
-            <label>Weight (lb / kg)
+            <label>Weight (lb)
               <input id="bodyWeight" type="number" min="0" step="0.1" placeholder="e.g. 175.5" />
             </label>
-            <label>Waist (in / cm)
+            <label>Waist (in)
               <input id="bodyWaist" type="number" min="0" step="0.1" placeholder="e.g. 32.5" />
             </label>
-            <label class="full-width">Notes
-              <textarea id="bodyNotes" rows="2" placeholder="Optional"></textarea>
-            </label>
-            <button type="submit">Save measurements</button>
+            <button type="submit" class="full-width">Save measurements</button>
           </form>
           <div id="bodyList" class="list"></div>
         </section>
@@ -227,18 +232,15 @@
     <p>Data synced automatically across devices via Cloudflare D1.</p>
   </footer>
 
-  <!-- Recipe library modal -->
+  <!-- ── Recipe library modal ──────────────────────────────────── -->
   <dialog id="recipeModal">
     <div class="modal-header">
       <h2>Recipe Library</h2>
       <button type="button" id="recipeModalClose" class="modal-close" aria-label="Close">✕</button>
     </div>
     <form id="recipeForm" class="grid-form">
-      <label>Name
+      <label class="full-width">Name
         <input id="recipeName" type="text" placeholder="e.g. Chicken rice bowl" required />
-      </label>
-      <label>Serving size
-        <input id="recipeServingSize" type="text" placeholder="e.g. 1 bowl / 250 g" />
       </label>
       <label>Calories / serving
         <input id="recipeCalories" type="number" min="0" step="1" value="0" />
@@ -246,21 +248,25 @@
       <label>Protein (g)
         <input id="recipeProtein" type="number" min="0" step="0.1" value="0" />
       </label>
-      <label>Fat (g)
-        <input id="recipeFat" type="number" min="0" step="0.1" value="0" />
-      </label>
       <label>Carbs (g)
         <input id="recipeCarbs" type="number" min="0" step="0.1" value="0" />
       </label>
-      <label class="full-width">Notes
-        <textarea id="recipeNotes" rows="2" placeholder="Optional"></textarea>
+      <label>Fat (g)
+        <input id="recipeFat" type="number" min="0" step="0.1" value="0" />
+      </label>
+      <label class="checkbox-label full-width">
+        <input type="checkbox" id="recipeAllowWeight" />
+        Allow logging by weight (grams)
+      </label>
+      <label id="recipeGramsPerServingLabel" style="display:none">Grams per serving
+        <input id="recipeGramsPerServing" type="number" min="1" step="1" />
       </label>
       <button type="submit">Save recipe</button>
     </form>
     <div id="recipeList" class="list modal-list"></div>
   </dialog>
 
-  <!-- Exercise library modal -->
+  <!-- ── Exercise library modal ────────────────────────────────── -->
   <dialog id="exerciseLibModal">
     <div class="modal-header">
       <h2>Exercise Library</h2>
@@ -270,11 +276,19 @@
       <label>Name
         <input id="exerciseLibName" type="text" placeholder="e.g. Bench press" required />
       </label>
-      <label>Category
-        <input id="exerciseLibCategory" type="text" placeholder="e.g. Push, Cardio, Legs" />
+      <label>Type
+        <select id="exerciseLibType">
+          <option value="weight">Weight-based (lb / kg)</option>
+          <option value="time">Time-based (min)</option>
+        </select>
       </label>
-      <label class="full-width">Notes
-        <textarea id="exerciseLibNotes" rows="2" placeholder="Optional"></textarea>
+      <label class="checkbox-label full-width">
+        <input type="checkbox" id="exerciseLibAllowSetsReps" checked />
+        Track sets &amp; reps
+      </label>
+      <label class="checkbox-label">
+        <input type="checkbox" id="exerciseLibAllowDistance" />
+        Track distance
       </label>
       <button type="submit">Save exercise</button>
     </form>

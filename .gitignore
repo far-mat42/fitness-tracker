@@ -7,3 +7,4 @@
 # Node modules (if you ever npm install anything in the worker folder)
 node_modules/
 worker/migration.sql
+worker/migration2.sql
