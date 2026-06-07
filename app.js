@@ -15,8 +15,11 @@ let currentExercise = null;
 let setCount        = 1;
 
 // Nutrition logging state
-let selectedRecipe   = null; // full recipe row when a library recipe is selected
+let selectedRecipe    = null; // full recipe row when a library recipe is selected
 let nutritionByWeight = false;
+
+// Recipe edit state
+let editingRecipeId = null; // null = add mode, number = editing that recipe's id
 
 const els = {};
 
@@ -248,7 +251,8 @@ function bindEvents() {
     els.recipeGramsPerServingLabel.style.display = els.recipeAllowWeight.checked ? "" : "none";
   });
 
-  // ── Delete (delegated) ─────────────────────────────────────────
+  // ── Edit / Delete (delegated on body) ─────────────────────────
+  document.body.addEventListener("click", handleEditButtons);
   document.body.addEventListener("click", handleDeleteButtons);
 
   // ── Top view switcher ──────────────────────────────────────────
@@ -279,8 +283,8 @@ function bindEvents() {
     await refreshRecipeModal();
     els.recipeModal.showModal();
   });
-  els.recipeModalClose.addEventListener("click", () => els.recipeModal.close());
-  els.recipeModal.addEventListener("click", e => { if (e.target === els.recipeModal) els.recipeModal.close(); });
+  els.recipeModalClose.addEventListener("click", () => { els.recipeModal.close(); resetRecipeFormToAddMode(); });
+  els.recipeModal.addEventListener("click", e => { if (e.target === els.recipeModal) { els.recipeModal.close(); resetRecipeFormToAddMode(); } });
   els.recipeForm.addEventListener("submit", handleRecipeSubmit);
 
   // ── Exercise library modal ─────────────────────────────────────
@@ -526,7 +530,10 @@ function renderExerciseList(exercises, setsMap) {
         ${extras ? `<p class="record-meta">${extras}</p>` : ""}
         ${setsHtml}
       </div>
-      <button class="icon-danger" type="button" data-delete="exercise" data-id="${row.id}">Delete</button>
+      <div class="record-actions">
+        <button class="icon-edit"   type="button" data-edit="exercise"   data-id="${row.id}">Edit</button>
+        <button class="icon-danger" type="button" data-delete="exercise" data-id="${row.id}">Delete</button>
+      </div>
     </article>`;
   }).join("");
 }
@@ -575,7 +582,10 @@ function renderRecipeList(recipes) {
         <h4>${escapeHtml(r.name)}</h4>
         <p class="record-meta">${round(r.calories, 0)} kcal · ${round(r.protein, 1)}g P · ${round(r.fat, 1)}g F · ${round(r.carbs, 1)}g C${r.grams_per_serving ? ` · ${r.grams_per_serving}${r.weight_unit || "g"}/srv` : ""}</p>
       </div>
-      <button class="icon-danger" type="button" data-delete="recipe" data-id="${r.id}">Delete</button>
+      <div class="record-actions">
+        <button class="icon-edit"   type="button" data-edit="recipe"   data-id="${r.id}">Edit</button>
+        <button class="icon-danger" type="button" data-delete="recipe" data-id="${r.id}">Delete</button>
+      </div>
     </article>`).join("");
 }
 
@@ -932,27 +942,46 @@ async function handleBodySubmit(event) {
 
 async function handleRecipeSubmit(event) {
   event.preventDefault();
-  const allowWeight      = els.recipeAllowWeight.checked;
-  const gramsPerServing  = allowWeight ? nullableNumber(els.recipeGramsPerServing.value) : null;
+  const allowWeight     = els.recipeAllowWeight.checked;
+  const gramsPerServing = allowWeight ? nullableNumber(els.recipeGramsPerServing.value) : null;
+  const weightUnit      = allowWeight ? (els.recipeWeightUnit?.value || "g") : "g";
+  const name            = els.recipeName.value.trim();
+  const calories = numberOrDefault(els.recipeCalories.value, 0);
+  const protein  = numberOrDefault(els.recipeProtein.value,  0);
+  const fat      = numberOrDefault(els.recipeFat.value,      0);
+  const carbs    = numberOrDefault(els.recipeCarbs.value,    0);
+
   try {
-    await dbRun(
-      `INSERT INTO recipes (name, calories, protein, fat, carbs, allow_weight_logging, grams_per_serving, weight_unit, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-       ON CONFLICT(name) DO UPDATE SET
-         calories = excluded.calories, protein = excluded.protein,
-         fat = excluded.fat, carbs = excluded.carbs,
-         allow_weight_logging = excluded.allow_weight_logging,
-         grams_per_serving = excluded.grams_per_serving,
-         weight_unit = excluded.weight_unit,
-         updated_at = CURRENT_TIMESTAMP`,
-      [els.recipeName.value.trim(),
-       numberOrDefault(els.recipeCalories.value, 0), numberOrDefault(els.recipeProtein.value, 0),
-       numberOrDefault(els.recipeFat.value, 0),      numberOrDefault(els.recipeCarbs.value, 0),
-       allowWeight ? 1 : 0, gramsPerServing,
-       allowWeight ? (els.recipeWeightUnit.value || "g") : "g"]
-    );
-    els.recipeForm.reset();
-    els.recipeGramsPerServingLabel.style.display = "none";
+    if (editingRecipeId) {
+      // ── Update existing recipe ─────────────────────────────────
+      await dbRun(
+        `UPDATE recipes SET name=?, calories=?, protein=?, fat=?, carbs=?,
+           allow_weight_logging=?, grams_per_serving=?, weight_unit=?, updated_at=CURRENT_TIMESTAMP
+         WHERE id=?`,
+        [name, calories, protein, fat, carbs,
+         allowWeight ? 1 : 0, gramsPerServing, weightUnit, editingRecipeId]
+      );
+      // Cascade: recompute macros for every nutrition_log that used this recipe
+      await cascadeRecipeUpdate(editingRecipeId, { calories, protein, fat, carbs, grams_per_serving: gramsPerServing });
+      resetRecipeFormToAddMode();
+    } else {
+      // ── Insert new recipe ──────────────────────────────────────
+      await dbRun(
+        `INSERT INTO recipes (name, calories, protein, fat, carbs, allow_weight_logging, grams_per_serving, weight_unit, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+         ON CONFLICT(name) DO UPDATE SET
+           calories = excluded.calories, protein = excluded.protein,
+           fat = excluded.fat, carbs = excluded.carbs,
+           allow_weight_logging = excluded.allow_weight_logging,
+           grams_per_serving = excluded.grams_per_serving,
+           weight_unit = excluded.weight_unit,
+           updated_at = CURRENT_TIMESTAMP`,
+        [name, calories, protein, fat, carbs,
+         allowWeight ? 1 : 0, gramsPerServing, weightUnit]
+      );
+      els.recipeForm.reset();
+      els.recipeGramsPerServingLabel.style.display = "none";
+    }
     setStatus("Saved");
     await refreshRecipeModal();
   } catch (err) {
@@ -987,6 +1016,207 @@ async function handleExerciseLibSubmit(event) {
     console.error(err);
     setStatus("Save failed", true);
   }
+}
+
+// ─── Edit dispatch ────────────────────────────────────────────────────────────
+async function handleEditButtons(event) {
+  const button = event.target.closest("button[data-edit]");
+  if (!button) return;
+  const type = button.dataset.edit;
+  const id   = Number(button.dataset.id);
+  if (type === "recipe")   await handleEditRecipeClick(id);
+  if (type === "exercise") await handleEditExerciseClick(id);
+}
+
+function resetRecipeFormToAddMode() {
+  if (!editingRecipeId) return;
+  editingRecipeId = null;
+  els.recipeForm.reset();
+  els.recipeGramsPerServingLabel.style.display = "none";
+  els.recipeForm.querySelector("button[type=submit]").textContent = "Save recipe";
+}
+
+async function handleEditRecipeClick(id) {
+  const recipe = await dbOne("SELECT * FROM recipes WHERE id = ?", [id]);
+  if (!recipe) return;
+
+  editingRecipeId = id;
+
+  // Pre-fill the add form at the top of the modal
+  els.recipeName.value     = recipe.name;
+  els.recipeCalories.value = recipe.calories;
+  els.recipeProtein.value  = recipe.protein;
+  els.recipeCarbs.value    = recipe.carbs;
+  els.recipeFat.value      = recipe.fat;
+  els.recipeAllowWeight.checked = !!recipe.allow_weight_logging;
+  els.recipeGramsPerServingLabel.style.display = recipe.allow_weight_logging ? "" : "none";
+  if (recipe.grams_per_serving != null) els.recipeGramsPerServing.value = recipe.grams_per_serving;
+  if (els.recipeWeightUnit) els.recipeWeightUnit.value = recipe.weight_unit || "g";
+
+  els.recipeForm.querySelector("button[type=submit]").textContent = "Update recipe";
+  els.recipeModal.scrollTop = 0;
+  els.recipeName.focus();
+}
+
+async function cascadeRecipeUpdate(recipeId, recipe) {
+  const logs = await dbQuery(
+    "SELECT id, servings, grams, date FROM nutrition_logs WHERE recipe_id = ?",
+    [recipeId]
+  );
+  if (!logs.length) return;
+
+  const updates = logs.map(log => {
+    let s = Number(log.servings) || 1;
+    // If logged by weight, derive servings from grams
+    if (log.grams != null && recipe.grams_per_serving) {
+      s = Number(log.grams) / Number(recipe.grams_per_serving);
+    }
+    return {
+      sql: `UPDATE nutrition_logs SET calories=?, protein=?, fat=?, carbs=? WHERE id=?`,
+      params: [recipe.calories * s, recipe.protein * s, recipe.fat * s, recipe.carbs * s, log.id]
+    };
+  });
+  await dbBatch(updates);
+
+  // Recalculate daily totals for every affected date
+  const dates = [...new Set(logs.map(l => l.date))];
+  for (const date of dates) await recalculateDailyNutrition(date);
+}
+
+async function handleEditExerciseClick(logId) {
+  const [log, existingSets] = await Promise.all([
+    dbOne(`SELECT el.*, e.tracking_type, e.allow_sets_reps, e.allow_distance
+           FROM exercise_logs el
+           LEFT JOIN exercises e ON e.id = el.exercise_id
+           WHERE el.id = ?`, [logId]),
+    dbQuery("SELECT * FROM exercise_sets WHERE log_id = ? ORDER BY set_number", [logId])
+  ]);
+  if (!log) return;
+
+  const trackingType  = log.tracking_type  || "weight";
+  const allowSetsReps = !!log.allow_sets_reps;
+  const allowDistance = !!log.allow_distance;
+  let editSetCount    = 0;
+
+  // Build modal
+  const modal = document.createElement("dialog");
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>Edit: ${escapeHtml(log.exercise_name)}</h2>
+      <button type="button" class="modal-close" id="exerciseEditClose">✕</button>
+    </div>
+    <form id="exerciseEditForm" class="grid-form">
+      ${allowSetsReps ? `
+        <div class="full-width">
+          <div class="sets-header">
+            <span class="sets-label">Sets</span>
+            <button type="button" id="editAddSetBtn" class="secondary">+ Add set</button>
+          </div>
+          <div id="editSetRows" class="set-rows"></div>
+        </div>` : ""}
+      ${allowDistance ? `
+        <label>Distance (km / mi)
+          <input id="editDistance" type="number" min="0" step="0.01"
+            value="${log.distance != null ? log.distance : ""}" />
+        </label>` : ""}
+      <button type="submit" class="full-width">Save changes</button>
+    </form>`;
+  document.body.appendChild(modal);
+  modal.showModal();
+
+  const closeModal = () => { modal.close(); modal.remove(); };
+  modal.querySelector("#exerciseEditClose").addEventListener("click", closeModal);
+  modal.addEventListener("click", e => { if (e.target === modal) closeModal(); });
+
+  if (allowSetsReps) {
+    const container = modal.querySelector("#editSetRows");
+
+    const buildRow = (num, set = null) => {
+      const div = document.createElement("div");
+      div.className  = "set-row";
+      div.dataset.setNum = num;
+      const valField = trackingType === "weight"
+        ? `<label>Weight (lb)<input type="number" min="0" step="0.5" class="set-weight" value="${set?.weight ?? ""}"/></label>`
+        : `<label>Duration (min)<input type="number" min="0" step="0.5" class="set-duration" value="${set?.duration_min ?? ""}"/></label>`;
+      div.innerHTML = `
+        <span class="set-num">Set ${num}</span>
+        ${valField}
+        <label>Reps<input type="number" min="0" step="1" class="set-reps" value="${set?.reps ?? ""}"/></label>
+        <button type="button" class="icon-danger remove-set-btn" data-set="${num}">×</button>`;
+      return div;
+    };
+
+    const refreshRemoveVisibility = () => {
+      const rows = container.querySelectorAll(".set-row");
+      rows.forEach(r => {
+        r.querySelector(".remove-set-btn").style.visibility = rows.length <= 1 ? "hidden" : "";
+      });
+    };
+
+    const renumberRows = () => {
+      editSetCount = 0;
+      container.querySelectorAll(".set-row").forEach(r => {
+        editSetCount++;
+        r.dataset.setNum = editSetCount;
+        r.querySelector(".set-num").textContent = `Set ${editSetCount}`;
+        r.querySelector(".remove-set-btn").dataset.set = editSetCount;
+      });
+      refreshRemoveVisibility();
+    };
+
+    // Populate with existing sets (or one blank row)
+    const seed = existingSets.length ? existingSets : [null];
+    seed.forEach((s, i) => { editSetCount++; container.appendChild(buildRow(i + 1, s)); });
+    refreshRemoveVisibility();
+
+    modal.querySelector("#editAddSetBtn").addEventListener("click", () => {
+      editSetCount++;
+      container.appendChild(buildRow(editSetCount));
+      refreshRemoveVisibility();
+    });
+
+    container.addEventListener("click", e => {
+      const btn = e.target.closest(".remove-set-btn");
+      if (!btn) return;
+      container.querySelector(`.set-row[data-set-num="${btn.dataset.set}"]`)?.remove();
+      renumberRows();
+    });
+  }
+
+  modal.querySelector("#exerciseEditForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    const newSets = [];
+    if (allowSetsReps) {
+      modal.querySelectorAll("#editSetRows .set-row").forEach((row, idx) => {
+        newSets.push({
+          set_number:   idx + 1,
+          weight:       nullableNumber(row.querySelector(".set-weight")?.value),
+          duration_min: nullableNumber(row.querySelector(".set-duration")?.value),
+          reps:         nullableInt(row.querySelector(".set-reps")?.value)
+        });
+      });
+    }
+    const distance = allowDistance
+      ? nullableNumber(modal.querySelector("#editDistance")?.value)
+      : log.distance;
+
+    try {
+      await dbBatch([
+        { sql: "DELETE FROM exercise_sets WHERE log_id = ?", params: [logId] },
+        ...newSets.map(s => ({
+          sql: "INSERT INTO exercise_sets (log_id, set_number, weight, reps, duration_min) VALUES (?, ?, ?, ?, ?)",
+          params: [logId, s.set_number, s.weight, s.reps, s.duration_min]
+        })),
+        { sql: "UPDATE exercise_logs SET distance=? WHERE id=?", params: [distance, logId] }
+      ]);
+      closeModal();
+      setStatus("Saved");
+      await renderSelectedDate();
+    } catch (err) {
+      console.error(err);
+      setStatus("Save failed", true);
+    }
+  });
 }
 
 async function handleDeleteButtons(event) {
