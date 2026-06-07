@@ -926,7 +926,7 @@ async function handleExerciseSubmit(event) {
       [selectedDate, currentExercise.id, currentExercise.name,
        currentExercise.category || "", distance]
     );
-    const logId = logResult.meta?.last_row_id;
+    const logId = logResult.lastRowId;
 
     if (logId && sets.length > 0) {
       await dbBatch(sets.map(s => ({
@@ -1360,14 +1360,14 @@ async function addSampleData() {
         `INSERT INTO exercise_logs (date, exercise_id, exercise_name, category, distance) VALUES (?, ?, ?, ?, NULL)`,
         [today, squat.id, squat.name, squat.category || "Legs"]
       );
-      sqLogId = r.meta?.last_row_id;
+      sqLogId = r.lastRowId;
     }
     if (walk) {
       const r = await dbRun(
         `INSERT INTO exercise_logs (date, exercise_id, exercise_name, category, distance) VALUES (?, ?, ?, ?, 1.2)`,
         [today, walk.id, walk.name, walk.category || "Cardio"]
       );
-      walkLogId = r.meta?.last_row_id;
+      walkLogId = r.lastRowId;
     }
 
     const setInserts = [];
