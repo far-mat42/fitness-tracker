@@ -789,7 +789,7 @@ async function handleNutritionSubmit(event) {
     }
   } else {
     const id = nullableInt(els.recipeSelect.value);
-    if (!id) { alert("Please select a recipe, or check "Custom / one-time entry"."); return; }
+    if (!id) { alert(`Please select a recipe, or check "Custom / one-time entry".`); return; }
     const recipe = selectedRecipe || await dbOne("SELECT * FROM recipes WHERE id = ?", [id]);
     if (!recipe) return;
     recipeId   = recipe.id;
