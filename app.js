@@ -146,7 +146,7 @@ function cacheElements() {
     "nutritionRecipeSection", "recipeSelect",
     "nutritionCustomSection", "nutritionName", "mealCalories", "mealProtein", "mealCarbs", "mealFat",
     "nutritionSaveToLib",
-    "nutritionQtyToggle", "qtyServingsBtn", "qtyGramsBtn",
+    "nutritionQtyToggle", "qtyServingsBtn", "qtyGramsBtn", "nutritionWeightUnitLabel",
     "nutritionServingsRow", "nutritionGramsRow", "servings", "nutritionGrams",
     "nutritionList",
     // Sleep form
@@ -161,7 +161,7 @@ function cacheElements() {
     // Recipe modal
     "recipeModal", "recipeModalClose",
     "recipeForm", "recipeName", "recipeCalories", "recipeProtein", "recipeCarbs", "recipeFat",
-    "recipeAllowWeight", "recipeGramsPerServingLabel", "recipeGramsPerServing", "recipeList",
+    "recipeAllowWeight", "recipeGramsPerServingLabel", "recipeGramsPerServing", "recipeWeightUnit", "recipeList",
     // Exercise lib modal
     "exerciseLibModal", "exerciseLibModalClose",
     "exerciseLibForm", "exerciseLibName", "exerciseLibType",
@@ -386,7 +386,7 @@ async function renderSelectedDate() {
   const [nutrition, sleep, mealRows, exercises, body] = await Promise.all([
     dbOne("SELECT * FROM daily_nutrition WHERE date = ?", [selectedDate]),
     dbOne("SELECT * FROM sleep_logs WHERE date = ?", [selectedDate]),
-    dbQuery(`SELECT nl.*, r.name AS recipe_name
+    dbQuery(`SELECT nl.*, r.name AS recipe_name, r.weight_unit
              FROM nutrition_logs nl
              LEFT JOIN recipes r ON r.id = nl.recipe_id
              WHERE nl.date = ?
@@ -456,8 +456,9 @@ function renderNutritionList(rows, nutrition) {
   }
   const records = rows.map(row => {
     const name = row.recipe_name || row.custom_name || "Meal";
+    const unit = row.weight_unit || "g";
     const qty  = row.grams != null
-      ? `${round(row.grams, 0)} g`
+      ? `${round(row.grams, 1)} ${unit}`
       : `${round(row.servings, 2)} serving(s)`;
     return `<article class="record">
       <div>
@@ -567,7 +568,7 @@ function renderRecipeList(recipes) {
     <article class="record">
       <div>
         <h4>${escapeHtml(r.name)}</h4>
-        <p class="record-meta">${round(r.calories, 0)} kcal · ${round(r.protein, 1)}g P · ${round(r.fat, 1)}g F · ${round(r.carbs, 1)}g C${r.grams_per_serving ? ` · ${r.grams_per_serving}g/srv` : ""}</p>
+        <p class="record-meta">${round(r.calories, 0)} kcal · ${round(r.protein, 1)}g P · ${round(r.fat, 1)}g F · ${round(r.carbs, 1)}g C${r.grams_per_serving ? ` · ${r.grams_per_serving}${r.weight_unit || "g"}/srv` : ""}</p>
       </div>
       <button class="icon-danger" type="button" data-delete="recipe" data-id="${r.id}">Delete</button>
     </article>`).join("");
@@ -625,6 +626,8 @@ function nutritionIsCustomToggle() {
   els.nutritionQtyToggle.style.display = "none";
   els.nutritionServingsRow.style.display = "";
   els.nutritionGramsRow.style.display    = "none";
+  els.qtyGramsBtn.textContent = "Grams";
+  els.nutritionWeightUnitLabel.textContent = "Grams";
 }
 
 async function onRecipeChange() {
@@ -641,10 +644,17 @@ async function onRecipeChange() {
     selectedRecipe = await dbOne("SELECT * FROM recipes WHERE id = ?", [id]);
     const allowWeight = selectedRecipe && selectedRecipe.allow_weight_logging;
     els.nutritionQtyToggle.style.display = allowWeight ? "flex" : "none";
-    if (!allowWeight) {
+    if (allowWeight) {
+      const unit = selectedRecipe.weight_unit || "g";
+      const label = unit === "ml" ? "Millilitres" : "Grams";
+      els.qtyGramsBtn.textContent = unit;
+      els.nutritionWeightUnitLabel.textContent = label;
+    } else {
       nutritionByWeight = false;
       els.nutritionServingsRow.style.display = "";
       els.nutritionGramsRow.style.display    = "none";
+      els.qtyGramsBtn.textContent = "Grams";
+      els.nutritionWeightUnitLabel.textContent = "Grams";
     }
   } catch (err) {
     console.error(err);
@@ -920,18 +930,20 @@ async function handleRecipeSubmit(event) {
   const gramsPerServing  = allowWeight ? nullableNumber(els.recipeGramsPerServing.value) : null;
   try {
     await dbRun(
-      `INSERT INTO recipes (name, calories, protein, fat, carbs, allow_weight_logging, grams_per_serving, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      `INSERT INTO recipes (name, calories, protein, fat, carbs, allow_weight_logging, grams_per_serving, weight_unit, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
        ON CONFLICT(name) DO UPDATE SET
          calories = excluded.calories, protein = excluded.protein,
          fat = excluded.fat, carbs = excluded.carbs,
          allow_weight_logging = excluded.allow_weight_logging,
          grams_per_serving = excluded.grams_per_serving,
+         weight_unit = excluded.weight_unit,
          updated_at = CURRENT_TIMESTAMP`,
       [els.recipeName.value.trim(),
        numberOrDefault(els.recipeCalories.value, 0), numberOrDefault(els.recipeProtein.value, 0),
        numberOrDefault(els.recipeFat.value, 0),      numberOrDefault(els.recipeCarbs.value, 0),
-       allowWeight ? 1 : 0, gramsPerServing]
+       allowWeight ? 1 : 0, gramsPerServing,
+       allowWeight ? (els.recipeWeightUnit.value || "g") : "g"]
     );
     els.recipeForm.reset();
     els.recipeGramsPerServingLabel.style.display = "none";
