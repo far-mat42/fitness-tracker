@@ -500,6 +500,45 @@ function renderSleepList(sleep) {
   </article>`;
 }
 
+// Groups consecutive sets with identical (weight, reps) or (duration, reps) and formats a summary line.
+// e.g. "3 × 12 reps @55 lb, 1 × 10 reps @50 lb"  /  "2 × 30 min"
+function summarizeSets(sets, trackingType) {
+  if (!sets.length) return null;
+
+  // Stable insertion-order grouping: preserve the order groups first appear.
+  const order  = [];
+  const groups = new Map();
+
+  for (const s of sets) {
+    const key = trackingType === "weight"
+      ? `w:${s.weight ?? ""}|r:${s.reps ?? ""}`
+      : `d:${s.duration_min ?? ""}|r:${s.reps ?? ""}`;
+
+    if (groups.has(key)) {
+      groups.get(key).count++;
+    } else {
+      const g = { count: 1, weight: s.weight, duration_min: s.duration_min, reps: s.reps };
+      groups.set(key, g);
+      order.push(key);
+    }
+  }
+
+  return order.map(key => {
+    const g = groups.get(key);
+    const tokens = [`${g.count} ×`];
+
+    if (trackingType === "weight") {
+      if (g.reps    != null) tokens.push(`${g.reps} reps`);
+      if (g.weight  != null) tokens.push(`@${round(g.weight, 1)} lb`);
+    } else {
+      if (g.duration_min != null) tokens.push(`${round(g.duration_min, 1)} min`);
+      if (g.reps         != null) tokens.push(`× ${g.reps} reps`);
+    }
+
+    return tokens.join(" ") || "—";
+  }).join(", ");
+}
+
 function renderExerciseList(exercises, setsMap) {
   if (!exercises.length) {
     els.exerciseList.innerHTML = `<div class="empty-state">No exercises logged for this day yet.</div>`;
@@ -508,27 +547,18 @@ function renderExerciseList(exercises, setsMap) {
   els.exerciseList.innerHTML = exercises.map(row => {
     const sets         = setsMap[row.id] || [];
     const trackingType = row.tracking_type || "weight";
-    let setsHtml = "";
-    if (sets.length) {
-      const badges = sets.map(s => {
-        const parts = [];
-        if (trackingType === "weight" && s.weight    != null) parts.push(`${round(s.weight, 1)} lb`);
-        if (trackingType === "time"   && s.duration_min != null) parts.push(`${round(s.duration_min, 1)} min`);
-        if (s.reps != null) parts.push(`${s.reps} reps`);
-        return `<span class="set-badge">Set ${s.set_number}: ${parts.join(" × ") || "—"}</span>`;
-      }).join("");
-      setsHtml = `<div class="set-list">${badges}</div>`;
-    }
-    const extras = [
-      row.category ? escapeHtml(row.category) : "",
-      row.distance  ? `${round(row.distance, 2)} km/mi` : ""
+
+    const summary = summarizeSets(sets, trackingType);
+    const extras  = [
+      row.category ? escapeHtml(row.category)           : "",
+      row.distance ? `${round(row.distance, 2)} km/mi`  : ""
     ].filter(Boolean).join(" · ");
 
     return `<article class="record">
       <div>
         <h4>${escapeHtml(row.exercise_name)}</h4>
-        ${extras ? `<p class="record-meta">${extras}</p>` : ""}
-        ${setsHtml}
+        ${extras  ? `<p class="record-meta">${extras}</p>`                          : ""}
+        ${summary ? `<p class="record-meta sets-summary">${escapeHtml(summary)}</p>` : ""}
       </div>
       <div class="record-actions">
         <button class="icon-edit"   type="button" data-edit="exercise"   data-id="${row.id}">Edit</button>
@@ -1153,13 +1183,14 @@ async function handleEditExerciseClick(logId) {
       });
     };
 
+    // Keep both data-set-num (on the row) and data-set (on the remove btn) in sync.
     const renumberRows = () => {
       editSetCount = 0;
       container.querySelectorAll(".set-row").forEach(r => {
         editSetCount++;
-        r.dataset.setNum = editSetCount;
+        r.dataset.setNum = String(editSetCount);           // data-set-num on the row
         r.querySelector(".set-num").textContent = `Set ${editSetCount}`;
-        r.querySelector(".remove-set-btn").dataset.set = editSetCount;
+        r.querySelector(".remove-set-btn").dataset.set = String(editSetCount); // data-set on btn
       });
       refreshRemoveVisibility();
     };
@@ -1178,6 +1209,7 @@ async function handleEditExerciseClick(logId) {
     container.addEventListener("click", e => {
       const btn = e.target.closest(".remove-set-btn");
       if (!btn) return;
+      // btn.dataset.set holds the set number; match against the row's data-set-num
       container.querySelector(`.set-row[data-set-num="${btn.dataset.set}"]`)?.remove();
       renumberRows();
     });
