@@ -9,16 +9,13 @@
 <body>
   <header class="site-header">
     <div>
-      <p class="eyebrow">SQLite-backed personal tracker</p>
+      <p class="eyebrow">Cloud-synced personal tracker</p>
       <h1>Diet, Health & Fitness Tracker</h1>
       <p class="subtitle">Track daily nutrition, sleep, exercise, and reusable meals from one static web app.</p>
     </div>
     <div class="db-controls" aria-label="Database controls">
-      <button id="downloadDbBtn" type="button">Download SQLite DB</button>
-      <label class="file-button" for="uploadDbInput">Load SQLite DB</label>
-      <input id="uploadDbInput" type="file" accept=".sqlite,.db,.sqlite3,application/vnd.sqlite3,application/octet-stream" />
       <button id="sampleDataBtn" type="button" class="secondary">Add sample data</button>
-      <button id="newDbBtn" type="button" class="danger">New blank DB</button>
+      <button id="settingsBtn" type="button">Settings</button>
     </div>
   </header>
 
@@ -52,7 +49,7 @@
           <p class="eyebrow">Selected day</p>
           <h2 id="selectedDateHeading"></h2>
         </div>
-        <p id="dbStatus" class="status">Loading SQLite...</p>
+        <p id="dbStatus" class="status">Connecting…</p>
       </div>
 
       <div id="summaryCards" class="summary-cards"></div>
@@ -195,10 +192,9 @@
   </main>
 
   <footer class="site-footer">
-    <p>Static app prototype. Data is stored in browser IndexedDB as a SQLite database and can be exported as a real <code>.sqlite</code> file.</p>
+    <p>Static app. Data is stored in a Cloudflare D1 database and synced automatically across devices.</p>
   </footer>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

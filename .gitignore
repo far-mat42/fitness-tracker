@@ -1,0 +1,8 @@
+# Wrangler local state — build cache, local D1 database files, miniflare state
+.wrangler/
+
+# Local secrets file (wrangler equivalent of .env — never commit secrets)
+.dev.vars
+
+# Node modules (if you ever npm install anything in the worker folder)
+node_modules/
