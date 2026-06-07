@@ -504,7 +504,7 @@ function renderExerciseList(exercises, setsMap) {
     if (sets.length) {
       const badges = sets.map(s => {
         const parts = [];
-        if (trackingType === "weight" && s.weight    != null) parts.push(`${round(s.weight, 1)} lb/kg`);
+        if (trackingType === "weight" && s.weight    != null) parts.push(`${round(s.weight, 1)} lb`);
         if (trackingType === "time"   && s.duration_min != null) parts.push(`${round(s.duration_min, 1)} min`);
         if (s.reps != null) parts.push(`${s.reps} reps`);
         return `<span class="set-badge">Set ${s.set_number}: ${parts.join(" × ") || "—"}</span>`;
@@ -702,7 +702,7 @@ function createSetRow(num) {
 
   const trackingType = currentExercise?.tracking_type ?? "weight";
   const valueField = trackingType === "weight"
-    ? `<label>Weight (lb/kg)<input type="number" min="0" step="0.5" class="set-weight" /></label>`
+    ? `<label>Weight (lb)<input type="number" min="0" step="0.5" class="set-weight" /></label>`
     : `<label>Duration (min)<input type="number" min="0" step="0.5" class="set-duration" /></label>`;
 
   div.innerHTML = `
@@ -1196,7 +1196,7 @@ async function renderExerciseProgressChart(exerciseName) {
 
   renderLineChart(els.exerciseProgressChart, data, {
     color: "#58a6ff",
-    unit:  hasWeight ? " lb/kg" : " sets",
+    unit:  hasWeight ? " lb" : " sets",
     height: 200
   });
 }
