@@ -500,8 +500,23 @@ function renderSleepList(sleep) {
   </article>`;
 }
 
+// Converts a decimal minutes value to a compact human-readable string.
+// 0.75 → "45s"   1.5 → "1m 30s"   90 → "1h 30m"   60.5 → "1h 0m 30s"
+function formatMinutes(decimalMin) {
+  const totalSeconds = Math.round(decimalMin * 60);
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+
+  if (h > 0 && s === 0) return `${h}h ${m}m`;
+  if (h > 0)            return `${h}h ${m}m ${s}s`;
+  if (m > 0 && s === 0) return `${m}m`;
+  if (m > 0)            return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
 // Groups consecutive sets with identical (weight, reps) or (duration, reps) and formats a summary line.
-// e.g. "3 × 12 reps @55 lb, 1 × 10 reps @50 lb"  /  "2 × 30 min"
+// e.g. "3 × 12 reps @55 lb, 1 × 10 reps @50 lb"  /  "2 × 30m"
 function summarizeSets(sets, trackingType) {
   if (!sets.length) return null;
 
@@ -531,7 +546,7 @@ function summarizeSets(sets, trackingType) {
       if (g.reps    != null) tokens.push(`${g.reps} reps`);
       if (g.weight  != null) tokens.push(`@${round(g.weight, 1)} lb`);
     } else {
-      if (g.duration_min != null) tokens.push(`${round(g.duration_min, 1)} min`);
+      if (g.duration_min != null) tokens.push(formatMinutes(g.duration_min));
       if (g.reps         != null) tokens.push(`× ${g.reps} reps`);
     }
 
