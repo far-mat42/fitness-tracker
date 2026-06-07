@@ -403,6 +403,61 @@ select option { background: var(--panel-strong); color: var(--text); }
 .grid-form button[type="submit"] { justify-self: start; }
 .grid-form button.full-width     { justify-self: stretch; }
 
+/* ── Searchable select ───────────────────────────────────────── */
+.searchable-host { position: relative; }
+
+.searchable-input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 0.55rem;
+  background: var(--panel-strong);
+  color: var(--text);
+  padding: 0.6rem 0.7rem;
+  outline: none;
+  cursor: text;
+}
+
+.searchable-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.14);
+}
+
+.searchable-dropdown {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--panel-strong);
+  border: 1px solid var(--border);
+  border-radius: 0.55rem;
+  max-height: 220px;
+  overflow-y: auto;
+  z-index: 200;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.searchable-dropdown.open { display: block; }
+
+.searchable-option {
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  font-size: 0.86rem;
+  color: var(--text);
+  border-radius: 0;
+}
+
+.searchable-option:hover,
+.searchable-option.focused { background: var(--accent-sub); color: var(--accent); }
+
+.searchable-option.selected { color: var(--accent); font-weight: 600; }
+
+.searchable-empty {
+  padding: 0.6rem 0.75rem;
+  font-size: 0.84rem;
+  color: var(--muted);
+}
+
 /* ── Servings / Grams toggle ─────────────────────────────────── */
 .qty-toggle {
   display: flex;

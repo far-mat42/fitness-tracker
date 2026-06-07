@@ -91,7 +91,9 @@
             <!-- Recipe path (default) -->
             <div id="nutritionRecipeSection" class="full-width">
               <label>Recipe
-                <select id="recipeSelect"><option value="">Select a recipe…</option></select>
+                <div id="recipeSelectHost" class="searchable-host">
+                  <input type="hidden" id="recipeSelect" />
+                </div>
               </label>
             </div>
 
@@ -161,9 +163,9 @@
           <form id="exerciseForm" class="grid-form">
 
             <label class="full-width">Exercise
-              <select id="exerciseLibSelect" required>
-                <option value="">Select an exercise…</option>
-              </select>
+              <div id="exerciseLibSelectHost" class="searchable-host">
+                <input type="hidden" id="exerciseLibSelect" />
+              </div>
             </label>
 
             <!-- Per-set section (shown when exercise allows sets/reps) -->

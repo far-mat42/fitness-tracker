@@ -172,6 +172,10 @@ function cacheElements() {
   els.tabSections    = Array.from(document.querySelectorAll(".tab-section"));
   els.topViewButtons = Array.from(document.querySelectorAll(".top-view-btn"));
   els.rangeButtons   = Array.from(document.querySelectorAll(".range-btn"));
+
+  // Searchable select instances (back the hidden inputs already cached above)
+  els.recipeSearchable   = new SearchableSelect("recipeSelectHost",      els.recipeSelect,      { placeholder: "Search recipes…" });
+  els.exerciseSearchable = new SearchableSelect("exerciseLibSelectHost",  els.exerciseLibSelect, { placeholder: "Search exercises…" });
 }
 
 function setInitialDates() {
@@ -554,9 +558,10 @@ async function refreshRecipeModal() {
 
 function renderRecipeOptions(recipes) {
   const cur = els.recipeSelect.value;
-  els.recipeSelect.innerHTML = `<option value="">Select a recipe…</option>` +
-    recipes.map(r => `<option value="${r.id}">${escapeHtml(r.name)} (${round(r.calories, 0)} kcal/srv)</option>`).join("");
-  if (recipes.some(r => String(r.id) === cur)) els.recipeSelect.value = cur;
+  els.recipeSearchable.setOptions(
+    recipes.map(r => ({ value: r.id, label: `${r.name} (${round(r.calories, 0)} kcal/srv)` }))
+  );
+  if (cur && recipes.some(r => String(r.id) === cur)) els.recipeSearchable.setValue(cur);
 }
 
 function renderRecipeList(recipes) {
@@ -606,9 +611,8 @@ async function populateExerciseLibSelect() {
   const curLib   = els.exerciseLibSelect.value;
   const curTrend = els.exerciseProgressSelect.value;
 
-  els.exerciseLibSelect.innerHTML = `<option value="">Select an exercise…</option>` +
-    exerciseLibrary.map(e => `<option value="${e.id}">${escapeHtml(e.name)}</option>`).join("");
-  if (exerciseLibrary.some(e => String(e.id) === curLib)) els.exerciseLibSelect.value = curLib;
+  els.exerciseSearchable.setOptions(exerciseLibrary.map(e => ({ value: e.id, label: e.name })));
+  if (curLib && exerciseLibrary.some(e => String(e.id) === curLib)) els.exerciseSearchable.setValue(curLib);
 
   els.exerciseProgressSelect.innerHTML = `<option value="">Pick an exercise…</option>` +
     exerciseLibrary.map(e => `<option value="${escapeHtml(e.name)}">${escapeHtml(e.name)}</option>`).join("");
@@ -620,7 +624,8 @@ function nutritionIsCustomToggle() {
   const isCustom = els.nutritionIsCustom.checked;
   els.nutritionRecipeSection.style.display = isCustom ? "none" : "";
   els.nutritionCustomSection.style.display = isCustom ? ""     : "none";
-  // Reset quantity toggle
+  // Reset quantity toggle and recipe selection
+  if (isCustom) els.recipeSearchable.clear();
   selectedRecipe   = null;
   nutritionByWeight = false;
   els.nutritionQtyToggle.style.display = "none";
@@ -829,6 +834,7 @@ async function handleNutritionSubmit(event) {
     await recalculateDailyNutrition(selectedDate);
     // Reset form
     els.nutritionForm.reset();
+    els.recipeSearchable.clear();
     selectedRecipe   = null;
     nutritionByWeight = false;
     els.nutritionQtyToggle.style.display   = "none";
@@ -890,7 +896,7 @@ async function handleExerciseSubmit(event) {
     }
 
     // Reset form
-    els.exerciseLibSelect.value = "";
+    els.exerciseSearchable.clear();
     currentExercise = null;
     setCount = 1;
     els.exerciseSetsSection.style.display = "none";
@@ -1338,6 +1344,156 @@ function round(value, decimals = 1) {
 function capitalize(value) {
   if (!value) return "";
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+// ─── SearchableSelect ─────────────────────────────────────────────────────────
+// Replaces a native <select> with a filterable text input + floating list.
+// The backing <input type="hidden"> keeps the value and fires "change" events
+// so all existing event listeners require zero changes.
+class SearchableSelect {
+  constructor(hostEl, hiddenEl, { placeholder = "Search…" } = {}) {
+    this._host   = typeof hostEl   === "string" ? document.getElementById(hostEl)   : hostEl;
+    this._hidden = typeof hiddenEl === "string" ? document.getElementById(hiddenEl) : hiddenEl;
+    this._options  = [];   // [{value, label}]
+    this._matches  = [];   // filtered subset currently rendered
+    this._selected = null; // {value, label} | null
+    this._focusIdx = -1;
+    this._isOpen   = false;
+
+    this._input = Object.assign(document.createElement("input"), {
+      type: "text", className: "searchable-input",
+      placeholder, autocomplete: "off", spellcheck: false
+    });
+    this._list = Object.assign(document.createElement("div"), {
+      className: "searchable-dropdown"
+    });
+
+    this._host.appendChild(this._input);
+    this._host.appendChild(this._list);
+    this._bind();
+  }
+
+  /** Replace the full option list. Deselects if the current value is gone. */
+  setOptions(options) {
+    this._options = options;
+    if (this._selected && !options.some(o => String(o.value) === String(this._selected.value))) {
+      this._selected = null;
+      this._hidden.value = "";
+      this._input.value  = "";
+    }
+    if (this._isOpen) this._renderList(this._input.value);
+  }
+
+  getValue() { return this._hidden.value; }
+
+  setValue(value) {
+    const opt = this._options.find(o => String(o.value) === String(value));
+    this._selected     = opt || null;
+    this._hidden.value = opt ? String(opt.value) : "";
+    this._input.value  = opt ? opt.label : "";
+  }
+
+  clear() {
+    this._selected     = null;
+    this._hidden.value = "";
+    this._input.value  = "";
+    if (this._isOpen) this._close();
+  }
+
+  _renderList(filter) {
+    const q = (filter || "").toLowerCase().trim();
+    this._matches  = q ? this._options.filter(o => o.label.toLowerCase().includes(q)) : this._options;
+    this._focusIdx = -1;
+    if (!this._matches.length) {
+      this._list.innerHTML = `<div class="searchable-empty">No matches</div>`;
+    } else {
+      this._list.innerHTML = this._matches.map((o, i) => {
+        const cls = "searchable-option" +
+          (this._selected && String(o.value) === String(this._selected.value) ? " selected" : "");
+        return `<div class="${cls}" data-value="${escapeHtml(String(o.value))}" data-i="${i}">${escapeHtml(o.label)}</div>`;
+      }).join("");
+    }
+  }
+
+  _open() {
+    if (this._isOpen) return;
+    this._isOpen = true;
+    this._renderList(this._selected ? "" : this._input.value);
+    this._list.classList.add("open");
+    const sel = this._list.querySelector(".selected");
+    if (sel) sel.scrollIntoView({ block: "nearest" });
+  }
+
+  _close() {
+    if (!this._isOpen) return;
+    this._isOpen = false;
+    this._list.classList.remove("open");
+    this._input.value = this._selected ? this._selected.label : "";
+  }
+
+  _pick(value) {
+    const opt = this._matches.find(o => String(o.value) === String(value));
+    if (!opt) return;
+    const prev = this._hidden.value;
+    this._selected     = opt;
+    this._hidden.value = String(opt.value);
+    this._close();
+    if (prev !== this._hidden.value) {
+      this._hidden.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  }
+
+  _moveFocus(dir) {
+    const items = Array.from(this._list.querySelectorAll(".searchable-option"));
+    if (!items.length) return;
+    this._focusIdx = Math.max(0, Math.min(items.length - 1, this._focusIdx + dir));
+    items.forEach((el, i) => el.classList.toggle("focused", i === this._focusIdx));
+    items[this._focusIdx]?.scrollIntoView({ block: "nearest" });
+  }
+
+  _bind() {
+    this._input.addEventListener("focus", () => {
+      if (this._selected) this._input.value = ""; // clear text to enable search
+      this._open();
+    });
+
+    this._input.addEventListener("input", () => {
+      // Typing clears any existing selection
+      if (this._selected) {
+        const prev = this._hidden.value;
+        this._selected     = null;
+        this._hidden.value = "";
+        if (prev) this._hidden.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+      if (!this._isOpen) { this._isOpen = true; this._list.classList.add("open"); }
+      this._renderList(this._input.value);
+    });
+
+    this._input.addEventListener("blur", () => {
+      // Small delay so a click on an option registers first
+      setTimeout(() => { if (!this._host.contains(document.activeElement)) this._close(); }, 150);
+    });
+
+    this._list.addEventListener("mousedown", e => {
+      e.preventDefault(); // prevent blur before click
+      const opt = e.target.closest(".searchable-option");
+      if (opt) this._pick(opt.dataset.value);
+    });
+
+    this._input.addEventListener("keydown", e => {
+      if (!this._isOpen && (e.key === "ArrowDown" || e.key === "Enter")) {
+        e.preventDefault(); this._open(); return;
+      }
+      if      (e.key === "ArrowDown") { e.preventDefault(); this._moveFocus(1); }
+      else if (e.key === "ArrowUp")   { e.preventDefault(); this._moveFocus(-1); }
+      else if (e.key === "Enter") {
+        e.preventDefault();
+        const items = Array.from(this._list.querySelectorAll(".searchable-option"));
+        if (this._focusIdx >= 0 && items[this._focusIdx]) this._pick(items[this._focusIdx].dataset.value);
+      }
+      else if (e.key === "Escape") { this._close(); this._input.blur(); }
+    });
+  }
 }
 
 function escapeHtml(value) {
