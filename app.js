@@ -720,8 +720,11 @@ function handleExerciseLibSelectChange() {
   currentExercise = id ? (exerciseLibrary.find(e => e.id === id) || null) : null;
   setCount = 1;
 
-  if (currentExercise && currentExercise.allow_sets_reps) {
+  if (currentExercise) {
     els.exerciseSetsSection.style.display = "";
+    // Hide the "Sets / + Add set" header for exercises that don't track sets
+    const header = els.exerciseSetsSection.querySelector(".sets-header");
+    if (header) header.style.display = currentExercise.allow_sets_reps ? "" : "none";
     renderSetRows();
   } else {
     els.exerciseSetsSection.style.display = "none";
@@ -745,17 +748,26 @@ function createSetRow(num) {
   div.className = "set-row";
   div.dataset.setNum = num;
 
-  const trackingType = currentExercise?.tracking_type ?? "weight";
-  const valueField = trackingType === "weight"
-    ? `<label>Weight (lb)<input type="number" min="0" step="0.5" class="set-weight" /></label>`
-    : `<label>Duration (min)<input type="number" min="0" step="0.5" class="set-duration" /></label>`;
+  const isTime       = (currentExercise?.tracking_type ?? "weight") === "time";
+  const allowSetsReps = !!currentExercise?.allow_sets_reps;
 
-  div.innerHTML = `
-    <span class="set-num">Set ${num}</span>
-    ${valueField}
-    <label>Reps<input type="number" min="0" step="1" class="set-reps" /></label>
-    <button type="button" class="icon-danger remove-set-btn" data-set="${num}"
-      style="${setCount <= 1 ? "visibility:hidden" : ""}">×</button>`;
+  const valueField = isTime
+    ? `<label>Duration (min)<input type="number" min="0" step="0.5" class="set-duration" /></label>`
+    : `<label>Weight (lb)<input type="number" min="0" step="0.5" class="set-weight" /></label>`;
+
+  // Reps: only for weight-based exercises that track sets/reps
+  const repsField = (!isTime && allowSetsReps)
+    ? `<label>Reps<input type="number" min="0" step="1" class="set-reps" /></label>`
+    : "";
+
+  // Set label + remove button only when multi-set tracking is on
+  const setLabel  = allowSetsReps ? `<span class="set-num">Set ${num}</span>` : "";
+  const removeBtn = allowSetsReps
+    ? `<button type="button" class="icon-danger remove-set-btn" data-set="${num}"
+         style="${setCount <= 1 ? "visibility:hidden" : ""}">×</button>`
+    : "";
+
+  div.innerHTML = `${setLabel}${valueField}${repsField}${removeBtn}`;
   return div;
 }
 
@@ -917,7 +929,7 @@ async function handleExerciseSubmit(event) {
     return;
   }
   const distance = nullableNumber(els.exerciseDistance?.value);
-  const sets     = currentExercise.allow_sets_reps ? collectSets() : [];
+  const sets     = collectSets();
 
   try {
     const logResult = await dbRun(
@@ -1136,14 +1148,14 @@ async function handleEditExerciseClick(logId) {
       <button type="button" class="modal-close" id="exerciseEditClose">✕</button>
     </div>
     <form id="exerciseEditForm" class="grid-form">
-      ${allowSetsReps ? `
-        <div class="full-width">
+      <div class="full-width">
+        ${allowSetsReps ? `
           <div class="sets-header">
             <span class="sets-label">Sets</span>
             <button type="button" id="editAddSetBtn" class="secondary">+ Add set</button>
-          </div>
-          <div id="editSetRows" class="set-rows"></div>
-        </div>` : ""}
+          </div>` : ""}
+        <div id="editSetRows" class="set-rows"></div>
+      </div>
       ${allowDistance ? `
         <label>Distance (km / mi)
           <input id="editDistance" type="number" min="0" step="0.01"
@@ -1163,16 +1175,25 @@ async function handleEditExerciseClick(logId) {
 
     const buildRow = (num, set = null) => {
       const div = document.createElement("div");
-      div.className  = "set-row";
-      div.dataset.setNum = num;
-      const valField = trackingType === "weight"
-        ? `<label>Weight (lb)<input type="number" min="0" step="0.5" class="set-weight" value="${set?.weight ?? ""}"/></label>`
-        : `<label>Duration (min)<input type="number" min="0" step="0.5" class="set-duration" value="${set?.duration_min ?? ""}"/></label>`;
-      div.innerHTML = `
-        <span class="set-num">Set ${num}</span>
-        ${valField}
-        <label>Reps<input type="number" min="0" step="1" class="set-reps" value="${set?.reps ?? ""}"/></label>
-        <button type="button" class="icon-danger remove-set-btn" data-set="${num}">×</button>`;
+      div.className      = "set-row";
+      div.dataset.setNum = String(num);
+
+      const isTime = trackingType === "time";
+
+      const valField = isTime
+        ? `<label>Duration (min)<input type="number" min="0" step="0.5" class="set-duration" value="${set?.duration_min ?? ""}"/></label>`
+        : `<label>Weight (lb)<input type="number" min="0" step="0.5" class="set-weight" value="${set?.weight ?? ""}"/></label>`;
+
+      const repsField = (!isTime && allowSetsReps)
+        ? `<label>Reps<input type="number" min="0" step="1" class="set-reps" value="${set?.reps ?? ""}"/></label>`
+        : "";
+
+      const setLabel  = allowSetsReps ? `<span class="set-num">Set ${num}</span>` : "";
+      const removeBtn = allowSetsReps
+        ? `<button type="button" class="icon-danger remove-set-btn" data-set="${num}">×</button>`
+        : "";
+
+      div.innerHTML = `${setLabel}${valField}${repsField}${removeBtn}`;
       return div;
     };
 
@@ -1218,16 +1239,14 @@ async function handleEditExerciseClick(logId) {
   modal.querySelector("#exerciseEditForm").addEventListener("submit", async e => {
     e.preventDefault();
     const newSets = [];
-    if (allowSetsReps) {
-      modal.querySelectorAll("#editSetRows .set-row").forEach((row, idx) => {
-        newSets.push({
-          set_number:   idx + 1,
-          weight:       nullableNumber(row.querySelector(".set-weight")?.value),
-          duration_min: nullableNumber(row.querySelector(".set-duration")?.value),
-          reps:         nullableInt(row.querySelector(".set-reps")?.value)
-        });
+    modal.querySelectorAll("#editSetRows .set-row").forEach((row, idx) => {
+      newSets.push({
+        set_number:   idx + 1,
+        weight:       nullableNumber(row.querySelector(".set-weight")?.value),
+        duration_min: nullableNumber(row.querySelector(".set-duration")?.value),
+        reps:         nullableInt(row.querySelector(".set-reps")?.value)
       });
-    }
+    });
     const distance = allowDistance
       ? nullableNumber(modal.querySelector("#editDistance")?.value)
       : log.distance;
