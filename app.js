@@ -752,7 +752,7 @@ function createSetRow(num) {
   const allowSetsReps = !!currentExercise?.allow_sets_reps;
 
   const valueField = isTime
-    ? `<label>Duration (min)<input type="number" min="0" step="0.5" class="set-duration" /></label>`
+    ? `<label>Duration (min)<input type="number" min="0" step="0.01" class="set-duration" /></label>`
     : `<label>Weight (lb)<input type="number" min="0" step="0.5" class="set-weight" /></label>`;
 
   // Reps: only for weight-based exercises that track sets/reps
@@ -1181,7 +1181,7 @@ async function handleEditExerciseClick(logId) {
       const isTime = trackingType === "time";
 
       const valField = isTime
-        ? `<label>Duration (min)<input type="number" min="0" step="0.5" class="set-duration" value="${set?.duration_min ?? ""}"/></label>`
+        ? `<label>Duration (min)<input type="number" min="0" step="0.01" class="set-duration" value="${set?.duration_min ?? ""}"/></label>`
         : `<label>Weight (lb)<input type="number" min="0" step="0.5" class="set-weight" value="${set?.weight ?? ""}"/></label>`;
 
       const repsField = (!isTime && allowSetsReps)
