@@ -1475,31 +1475,126 @@ async function renderExerciseProgressChart(exerciseName) {
     els.exerciseProgressChart.innerHTML = `<div class="chart-empty">Select an exercise above to see progress.</div>`;
     return;
   }
+
+  const exercise  = exerciseLibrary.find(e => e.name === exerciseName);
+  const isTime    = exercise?.tracking_type === "time";
   const todayKey  = formatDateKey(new Date());
   const startDate = dateSpineStart(todayKey, trendDays);
 
-  // Get per-set max weight or total sets per day via exercise_sets JOIN
+  // One row per unique (date × weight/duration) — so multiple dots can appear per day
   const rows = await dbQuery(`
     SELECT el.date,
-      MAX(es.weight) AS max_weight,
-      SUM(CASE WHEN es.id IS NOT NULL THEN 1 ELSE 0 END) AS total_sets
+      es.weight,
+      es.duration_min,
+      COUNT(es.id)              AS set_count,
+      SUM(COALESCE(es.reps, 0)) AS total_reps
     FROM exercise_logs el
-    LEFT JOIN exercise_sets es ON es.log_id = el.id
+    JOIN exercise_sets es ON es.log_id = el.id
     WHERE el.exercise_name = ? AND el.date >= ? AND el.date <= ?
-    GROUP BY el.date ORDER BY el.date`,
+    GROUP BY el.date, es.weight, es.duration_min
+    ORDER BY el.date`,
     [exerciseName, startDate, todayKey]);
 
-  const hasWeight = rows.some(r => r.max_weight != null);
-  const spine     = buildDateSpine(startDate, todayKey);
-  const map       = Object.fromEntries(rows.map(r => [
-    r.date, hasWeight ? (r.max_weight != null ? Number(r.max_weight) : null) : Number(r.total_sets)
-  ]));
-  const data = spine.map(d => ({ date: d, value: map[d] ?? null }));
+  if (!rows.length) {
+    els.exerciseProgressChart.innerHTML = `<div class="chart-empty">No data for this period.</div>`;
+    return;
+  }
 
-  renderLineChart(els.exerciseProgressChart, data, {
-    color: "#58a6ff",
-    unit:  hasWeight ? " lb" : " sets",
-    height: 200
+  renderDotChart(els.exerciseProgressChart, rows, { isTime });
+}
+
+function renderDotChart(container, rows, { isTime = false } = {}) {
+  const W   = 480, H = 220;
+  const pad = { t: 16, r: 16, b: 32, l: 52 };
+  const cW  = W - pad.l - pad.r;
+  const cH  = H - pad.t - pad.b;
+
+  // Unique sorted dates → x positions
+  const allDates  = [...new Set(rows.map(r => r.date))].sort();
+  const N         = allDates.length;
+  const dateIndex = Object.fromEntries(allDates.map((d, i) => [d, i]));
+
+  // Y axis range
+  const yVals = rows.map(r => Number(isTime ? r.duration_min : r.weight)).filter(v => isFinite(v));
+  let minV = Math.min(...yVals), maxV = Math.max(...yVals);
+  if (minV === maxV) { minV = Math.max(0, minV - 5); maxV += 5; }
+
+  // Intensity: normalise reps (weight-based) or set count (time-based) → opacity 0.2–1.0
+  const intensityKey = isTime ? "set_count" : "total_reps";
+  const maxIntensity = Math.max(...rows.map(r => Number(r[intensityKey]) || 0), 1);
+
+  const sx = i  => pad.l + (N < 2 ? cW / 2 : (i / (N - 1)) * cW);
+  const sy = v  => pad.t + cH - ((v - minV) / (maxV - minV)) * cH;
+  const f  = n  => n.toFixed(1);
+
+  // Y-axis ticks (5 levels)
+  const yTicks = [0, 0.25, 0.5, 0.75, 1].map(t => {
+    const v = minV + t * (maxV - minV);
+    const y = sy(v);
+    const label = isTime ? formatMinutes(v) : `${round(v, 0)}`;
+    return `<line x1="${pad.l}" y1="${f(y)}" x2="${f(pad.l + cW)}" y2="${f(y)}" class="chart-grid"/>
+            <text x="${f(pad.l - 6)}" y="${f(y + 4)}" class="chart-tick" text-anchor="end">${label}</text>`;
+  }).join("");
+
+  // X-axis date labels (up to 5)
+  const xCount = Math.min(5, N);
+  const xIdxs  = xCount <= 1 ? [0] : Array.from({ length: xCount }, (_, i) =>
+    Math.round(i * (N - 1) / (xCount - 1)));
+  const xTicks = [...new Set(xIdxs)].map(i =>
+    `<text x="${f(sx(i))}" y="${H - 4}" class="chart-tick" text-anchor="middle">${allDates[i].slice(5).replace("-", "/")}</text>`
+  ).join("");
+
+  // Dots — one per row, opacity encodes intensity
+  const dots = rows.map((r, ri) => {
+    const yVal = Number(isTime ? r.duration_min : r.weight);
+    if (!isFinite(yVal)) return "";
+    const cx      = sx(dateIndex[r.date]);
+    const cy      = sy(yVal);
+    const opacity = (0.2 + 0.8 * ((Number(r[intensityKey]) || 0) / maxIntensity)).toFixed(2);
+    const sc      = Number(r.set_count);
+    const rp      = Number(r.total_reps);
+    const yLabel  = isTime ? formatMinutes(yVal) : `${round(yVal, 1)} lb`;
+    const tipText = isTime
+      ? `${r.date} · ${yLabel} · ${sc} set${sc !== 1 ? "s" : ""}`
+      : `${r.date} · ${yLabel} · ${rp} rep${rp !== 1 ? "s" : ""} across ${sc} set${sc !== 1 ? "s" : ""}`;
+
+    return `<circle cx="${f(cx)}" cy="${f(cy)}" r="5.5"
+              fill="#58a6ff" fill-opacity="${opacity}"
+              stroke="#58a6ff" stroke-opacity="${Math.min(1, Number(opacity) + 0.15).toFixed(2)}"
+              stroke-width="1.5"
+              data-tip="${escapeHtml(tipText)}"
+              class="dot-point"/>`;
+  }).join("");
+
+  container.innerHTML = `
+    <div class="dot-chart-wrap" style="position:relative">
+      <svg viewBox="0 0 ${W} ${H}" class="line-chart">
+        ${yTicks}
+        <line x1="${pad.l}" y1="${pad.t}" x2="${pad.l}" y2="${f(pad.t + cH)}" class="chart-axis"/>
+        <line x1="${pad.l}" y1="${f(pad.t + cH)}" x2="${f(pad.l + cW)}" y2="${f(pad.t + cH)}" class="chart-axis"/>
+        ${dots}
+        ${xTicks}
+      </svg>
+      <div class="dot-tooltip" id="dotTooltip" style="display:none"></div>
+    </div>`;
+
+  // Wire up hover tooltip
+  const svg     = container.querySelector("svg");
+  const tooltip = container.querySelector("#dotTooltip");
+  svg.addEventListener("mouseover", e => {
+    const circle = e.target.closest(".dot-point");
+    if (!circle) return;
+    tooltip.textContent = circle.dataset.tip;
+    tooltip.style.display = "block";
+  });
+  svg.addEventListener("mousemove", e => {
+    const rect = container.getBoundingClientRect();
+    tooltip.style.left = `${e.clientX - rect.left + 12}px`;
+    tooltip.style.top  = `${e.clientY - rect.top  - 28}px`;
+  });
+  svg.addEventListener("mouseout", e => {
+    if (!e.target.closest(".dot-point")) return;
+    tooltip.style.display = "none";
   });
 }
 
