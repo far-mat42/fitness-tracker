@@ -8,3 +8,4 @@
 node_modules/
 worker/migration.sql
 worker/migration2.sql
+.env
