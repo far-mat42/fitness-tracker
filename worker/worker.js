@@ -4,6 +4,21 @@ export default {
       return respond(null, 204);
     }
 
+    const url = new URL(request.url);
+
+    // Public read-only endpoint — no auth required
+    if (request.method === "GET" && url.pathname === "/list") {
+      const [recipes, exercises] = await Promise.all([
+        env.DB.prepare(
+          "SELECT id, name, calories, protein, fat, carbs, allow_weight_logging, grams_per_serving, weight_unit FROM recipes ORDER BY name COLLATE NOCASE"
+        ).all(),
+        env.DB.prepare(
+          "SELECT id, name, tracking_type, allow_sets_reps, allow_distance FROM exercises ORDER BY name COLLATE NOCASE"
+        ).all(),
+      ]);
+      return respond({ recipes: recipes.results, exercises: exercises.results });
+    }
+
     const auth = request.headers.get("Authorization");
     if (!auth || auth !== `Bearer ${env.AUTH_SECRET}`) {
       return respond({ error: "Unauthorized" }, 401);
@@ -13,7 +28,6 @@ export default {
       return respond({ error: "Method not allowed" }, 405);
     }
 
-    const url = new URL(request.url);
     let body;
     try {
       body = await request.json();
