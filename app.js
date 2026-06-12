@@ -525,9 +525,10 @@ function summarizeSets(sets, trackingType) {
   const groups = new Map();
 
   for (const s of sets) {
-    const key = trackingType === "weight"
-      ? `w:${s.weight ?? ""}|r:${s.reps ?? ""}`
-      : `d:${s.duration_min ?? ""}|r:${s.reps ?? ""}`;
+    let key;
+    if (trackingType === "weight")      key = `w:${s.weight ?? ""}|r:${s.reps ?? ""}`;
+    else if (trackingType === "time")   key = `d:${s.duration_min ?? ""}|r:${s.reps ?? ""}`;
+    else                                key = `r:${s.reps ?? ""}`;  // bodyweight
 
     if (groups.has(key)) {
       groups.get(key).count++;
@@ -545,9 +546,12 @@ function summarizeSets(sets, trackingType) {
     if (trackingType === "weight") {
       if (g.reps    != null) tokens.push(`${g.reps} reps`);
       if (g.weight  != null) tokens.push(`@${round(g.weight, 1)} lb`);
-    } else {
+    } else if (trackingType === "time") {
       if (g.duration_min != null) tokens.push(formatMinutes(g.duration_min));
       if (g.reps         != null) tokens.push(`× ${g.reps} reps`);
+    } else {
+      // bodyweight — reps only
+      if (g.reps != null) tokens.push(`${g.reps} reps`);
     }
 
     return tokens.join(" ") || "—";
@@ -645,7 +649,7 @@ async function refreshExerciseLibModal() {
   }
   els.exerciseLibList.innerHTML = exerciseLibrary.map(ex => {
     const flags = [
-      ex.tracking_type === "time" ? "Time-based" : "Weight-based",
+      ex.tracking_type === "time" ? "Time-based" : ex.tracking_type === "bodyweight" ? "Body-weight" : "Weight-based",
       ex.allow_sets_reps ? "Sets/reps"  : "",
       ex.allow_distance  ? "Distance"   : ""
     ].filter(Boolean).join(" · ");
@@ -763,15 +767,22 @@ function createSetRow(num) {
   div.className = "set-row";
   div.dataset.setNum = num;
 
-  const isTime       = (currentExercise?.tracking_type ?? "weight") === "time";
+  const trackingType  = currentExercise?.tracking_type ?? "weight";
+  const isTime        = trackingType === "time";
+  const isBodyweight  = trackingType === "bodyweight";
   const allowSetsReps = !!currentExercise?.allow_sets_reps;
 
-  const valueField = isTime
-    ? `<label>Duration (min)<input type="number" min="0" step="0.01" class="set-duration" /></label>`
-    : `<label>Weight (lb)<input type="number" min="0" step="0.5" class="set-weight" /></label>`;
+  let valueField;
+  if (isBodyweight) {
+    valueField = "";
+  } else if (isTime) {
+    valueField = `<label>Duration (min)<input type="number" min="0" step="0.01" class="set-duration" /></label>`;
+  } else {
+    valueField = `<label>Weight (lb)<input type="number" min="0" step="0.5" class="set-weight" /></label>`;
+  }
 
-  // Reps: only for weight-based exercises that track sets/reps
-  const repsField = (!isTime && allowSetsReps)
+  // Reps: for weight-based (with sets/reps) and bodyweight exercises
+  const repsField = ((!isTime && !isBodyweight && allowSetsReps) || isBodyweight)
     ? `<label>Reps<input type="number" min="0" step="1" class="set-reps" /></label>`
     : "";
 
@@ -1185,6 +1196,27 @@ async function handleEditExerciseClick(logId) {
   modal.querySelector("#exerciseEditClose").addEventListener("click", closeModal);
   modal.addEventListener("click", e => { if (e.target === modal) closeModal(); });
 
+  if (!allowSetsReps) {
+    // Single-entry edit (no set tracking): show one row with just the value field
+    const container = modal.querySelector("#editSetRows");
+    const existing  = existingSets[0] ?? null;
+    const isTime       = trackingType === "time";
+    const isBodyweight = trackingType === "bodyweight";
+    let fieldHtml;
+    if (isBodyweight) {
+      fieldHtml = `<label>Reps<input type="number" min="0" step="1" class="set-reps" value="${existing?.reps ?? ""}"/></label>`;
+    } else if (isTime) {
+      fieldHtml = `<label>Duration (min)<input type="number" min="0" step="0.01" class="set-duration" value="${existing?.duration_min ?? ""}"/></label>`;
+    } else {
+      fieldHtml = `<label>Weight (lb)<input type="number" min="0" step="0.5" class="set-weight" value="${existing?.weight ?? ""}"/></label>`;
+    }
+    const div = document.createElement("div");
+    div.className      = "set-row";
+    div.dataset.setNum = "1";
+    div.innerHTML      = fieldHtml;
+    container.appendChild(div);
+  }
+
   if (allowSetsReps) {
     const container = modal.querySelector("#editSetRows");
 
@@ -1193,13 +1225,19 @@ async function handleEditExerciseClick(logId) {
       div.className      = "set-row";
       div.dataset.setNum = String(num);
 
-      const isTime = trackingType === "time";
+      const isTime       = trackingType === "time";
+      const isBodyweight = trackingType === "bodyweight";
 
-      const valField = isTime
-        ? `<label>Duration (min)<input type="number" min="0" step="0.01" class="set-duration" value="${set?.duration_min ?? ""}"/></label>`
-        : `<label>Weight (lb)<input type="number" min="0" step="0.5" class="set-weight" value="${set?.weight ?? ""}"/></label>`;
+      let valField;
+      if (isBodyweight) {
+        valField = "";
+      } else if (isTime) {
+        valField = `<label>Duration (min)<input type="number" min="0" step="0.01" class="set-duration" value="${set?.duration_min ?? ""}"/></label>`;
+      } else {
+        valField = `<label>Weight (lb)<input type="number" min="0" step="0.5" class="set-weight" value="${set?.weight ?? ""}"/></label>`;
+      }
 
-      const repsField = (!isTime && allowSetsReps)
+      const repsField = ((!isTime && !isBodyweight && allowSetsReps) || isBodyweight)
         ? `<label>Reps<input type="number" min="0" step="1" class="set-reps" value="${set?.reps ?? ""}"/></label>`
         : "";
 
@@ -1476,22 +1514,26 @@ async function renderExerciseProgressChart(exerciseName) {
     return;
   }
 
-  const exercise  = exerciseLibrary.find(e => e.name === exerciseName);
-  const isTime    = exercise?.tracking_type === "time";
-  const todayKey  = formatDateKey(new Date());
-  const startDate = dateSpineStart(todayKey, trendDays);
+  const exercise      = exerciseLibrary.find(e => e.name === exerciseName);
+  const trackingType  = exercise?.tracking_type ?? "weight";
+  const isTime        = trackingType === "time";
+  const isBodyweight  = trackingType === "bodyweight";
+  const todayKey      = formatDateKey(new Date());
+  const startDate     = dateSpineStart(todayKey, trendDays);
 
-  // One row per unique (date × weight/duration) — so multiple dots can appear per day
+  // One row per unique (date × weight/duration/reps) — multiple dots can appear per day
+  const groupBy = isBodyweight ? "el.date, es.reps" : "el.date, es.weight, es.duration_min";
   const rows = await dbQuery(`
     SELECT el.date,
       es.weight,
       es.duration_min,
+      es.reps                   AS reps_val,
       COUNT(es.id)              AS set_count,
       SUM(COALESCE(es.reps, 0)) AS total_reps
     FROM exercise_logs el
     JOIN exercise_sets es ON es.log_id = el.id
     WHERE el.exercise_name = ? AND el.date >= ? AND el.date <= ?
-    GROUP BY el.date, es.weight, es.duration_min
+    GROUP BY ${groupBy}
     ORDER BY el.date`,
     [exerciseName, startDate, todayKey]);
 
@@ -1500,10 +1542,10 @@ async function renderExerciseProgressChart(exerciseName) {
     return;
   }
 
-  renderDotChart(els.exerciseProgressChart, rows, { isTime });
+  renderDotChart(els.exerciseProgressChart, rows, { isTime, isBodyweight });
 }
 
-function renderDotChart(container, rows, { isTime = false } = {}) {
+function renderDotChart(container, rows, { isTime = false, isBodyweight = false } = {}) {
   const W   = 480, H = 220;
   const pad = { t: 16, r: 16, b: 32, l: 52 };
   const cW  = W - pad.l - pad.r;
@@ -1515,12 +1557,12 @@ function renderDotChart(container, rows, { isTime = false } = {}) {
   const dateIndex = Object.fromEntries(allDates.map((d, i) => [d, i]));
 
   // Y axis range
-  const yVals = rows.map(r => Number(isTime ? r.duration_min : r.weight)).filter(v => isFinite(v));
+  const yVals = rows.map(r => Number(isBodyweight ? r.reps_val : isTime ? r.duration_min : r.weight)).filter(v => isFinite(v));
   let minV = Math.min(...yVals), maxV = Math.max(...yVals);
   if (minV === maxV) { minV = Math.max(0, minV - 5); maxV += 5; }
 
-  // Intensity: normalise reps (weight-based) or set count (time-based) → opacity 0.2–1.0
-  const intensityKey = isTime ? "set_count" : "total_reps";
+  // Intensity: normalise set count (time/bodyweight) or total reps (weight-based) → opacity 0.2–1.0
+  const intensityKey = (isTime || isBodyweight) ? "set_count" : "total_reps";
   const maxIntensity = Math.max(...rows.map(r => Number(r[intensityKey]) || 0), 1);
 
   const sx = i  => pad.l + (N < 2 ? cW / 2 : (i / (N - 1)) * cW);
@@ -1531,7 +1573,7 @@ function renderDotChart(container, rows, { isTime = false } = {}) {
   const yTicks = [0, 0.25, 0.5, 0.75, 1].map(t => {
     const v = minV + t * (maxV - minV);
     const y = sy(v);
-    const label = isTime ? formatMinutes(v) : `${round(v, 0)}`;
+    const label = isBodyweight ? `${round(v, 0)} reps` : isTime ? formatMinutes(v) : `${round(v, 0)}`;
     return `<line x1="${pad.l}" y1="${f(y)}" x2="${f(pad.l + cW)}" y2="${f(y)}" class="chart-grid"/>
             <text x="${f(pad.l - 6)}" y="${f(y + 4)}" class="chart-tick" text-anchor="end">${label}</text>`;
   }).join("");
@@ -1546,17 +1588,19 @@ function renderDotChart(container, rows, { isTime = false } = {}) {
 
   // Dots — one per row, opacity encodes intensity
   const dots = rows.map((r, ri) => {
-    const yVal = Number(isTime ? r.duration_min : r.weight);
+    const yVal = Number(isBodyweight ? r.reps_val : isTime ? r.duration_min : r.weight);
     if (!isFinite(yVal)) return "";
     const cx      = sx(dateIndex[r.date]);
     const cy      = sy(yVal);
     const opacity = (0.2 + 0.8 * ((Number(r[intensityKey]) || 0) / maxIntensity)).toFixed(2);
     const sc      = Number(r.set_count);
     const rp      = Number(r.total_reps);
-    const yLabel  = isTime ? formatMinutes(yVal) : `${round(yVal, 1)} lb`;
-    const tipText = isTime
+    const yLabel  = isBodyweight ? `${round(yVal, 0)} reps` : isTime ? formatMinutes(yVal) : `${round(yVal, 1)} lb`;
+    const tipText = isBodyweight
       ? `${r.date} · ${yLabel} · ${sc} set${sc !== 1 ? "s" : ""}`
-      : `${r.date} · ${yLabel} · ${rp} rep${rp !== 1 ? "s" : ""} across ${sc} set${sc !== 1 ? "s" : ""}`;
+      : isTime
+        ? `${r.date} · ${yLabel} · ${sc} set${sc !== 1 ? "s" : ""}`
+        : `${r.date} · ${yLabel} · ${rp} rep${rp !== 1 ? "s" : ""} across ${sc} set${sc !== 1 ? "s" : ""}`;
 
     return `<circle cx="${f(cx)}" cy="${f(cy)}" r="5.5"
               fill="#58a6ff" fill-opacity="${opacity}"
