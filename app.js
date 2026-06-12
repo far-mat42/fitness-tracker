@@ -139,7 +139,7 @@ async function dbBatch(statements) {
 // ─── Element cache ────────────────────────────────────────────────────────────
 function cacheElements() {
   const ids = [
-    "addRecipeBtn", "addExerciseLibBtn", "sampleDataBtn", "settingsBtn", "dbStatus",
+    "addRecipeBtn", "addExerciseLibBtn", "sampleDataBtn", "exportBtn", "settingsBtn", "dbStatus",
     "prevMonthBtn", "nextMonthBtn", "todayBtn", "monthLabel", "calendar", "legend",
     "calendarLayout", "trendsLayout", "chartsGrid",
     "exerciseProgressSelect", "exerciseProgressChart", "exerciseProgressCard",
@@ -298,6 +298,7 @@ function bindEvents() {
 
   // ── Misc ───────────────────────────────────────────────────────
   els.sampleDataBtn.addEventListener("click", addSampleData);
+  els.exportBtn.addEventListener("click", showExportModal);
   els.settingsBtn.addEventListener("click", () => showConfigModal());
 }
 
@@ -1321,6 +1322,164 @@ async function handleEditExerciseClick(logId) {
       setStatus("Save failed", true);
     }
   });
+}
+
+// ─── Export ───────────────────────────────────────────────────────────────────
+function showExportModal() {
+  const today = formatDateKey(new Date());
+  const thirtyAgo = formatDateKey(new Date(Date.now() - 29 * 864e5));
+
+  const modal = document.createElement("dialog");
+  modal.innerHTML = `
+    <div class="modal-header">
+      <h2>Export Logs</h2>
+      <button type="button" class="modal-close" id="exportModalClose">✕</button>
+    </div>
+    <form id="exportForm" class="grid-form">
+      <label>From
+        <input type="date" id="exportFrom" value="${thirtyAgo}" required />
+      </label>
+      <label>To
+        <input type="date" id="exportTo" value="${today}" required />
+      </label>
+      <button type="submit" class="full-width">Download .md file</button>
+    </form>`;
+  document.body.appendChild(modal);
+  modal.showModal();
+
+  const close = () => { modal.close(); modal.remove(); };
+  modal.querySelector("#exportModalClose").addEventListener("click", close);
+  modal.addEventListener("click", e => { if (e.target === modal) close(); });
+
+  modal.querySelector("#exportForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    const from = modal.querySelector("#exportFrom").value;
+    const to   = modal.querySelector("#exportTo").value;
+    if (!from || !to) return;
+    close();
+    await handleExport(from, to);
+  });
+}
+
+async function handleExport(from, to) {
+  setStatus("Exporting…");
+  try {
+    const [exerciseRows, nutritionRows, dailyRows, sleepRows, bodyRows] = await Promise.all([
+      dbQuery(`
+        SELECT el.date, el.id AS log_id, el.exercise_name,
+               COALESCE(e.tracking_type, 'weight') AS tracking_type,
+               es.set_number, es.weight, es.reps, es.duration_min
+        FROM exercise_logs el
+        LEFT JOIN exercises e ON e.id = el.exercise_id
+        LEFT JOIN exercise_sets es ON es.log_id = el.id
+        WHERE el.date >= ? AND el.date <= ?
+        ORDER BY el.date, el.id, es.set_number`, [from, to]),
+      dbQuery(`
+        SELECT nl.date, nl.meal_type,
+               COALESCE(r.name, nl.custom_name) AS food_name,
+               nl.calories, nl.protein, nl.fat, nl.carbs
+        FROM nutrition_logs nl
+        LEFT JOIN recipes r ON r.id = nl.recipe_id
+        WHERE nl.date >= ? AND nl.date <= ?
+        ORDER BY nl.date,
+          CASE nl.meal_type WHEN 'breakfast' THEN 1 WHEN 'lunch' THEN 2
+            WHEN 'dinner' THEN 3 ELSE 4 END`, [from, to]),
+      dbQuery(`SELECT date, calories, protein, fat, carbs FROM daily_nutrition
+               WHERE date >= ? AND date <= ? ORDER BY date`, [from, to]),
+      dbQuery(`SELECT date, hours FROM sleep_logs
+               WHERE date >= ? AND date <= ? ORDER BY date`, [from, to]),
+      dbQuery(`SELECT date, weight, waist FROM body_measurements
+               WHERE date >= ? AND date <= ? ORDER BY date`, [from, to]),
+    ]);
+
+    const md = formatExportMarkdown({ exerciseRows, nutritionRows, dailyRows, sleepRows, bodyRows }, from, to);
+    const blob = new Blob([md], { type: "text/markdown" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `fitness-export-${from}-to-${to}.md`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    setStatus("Exported");
+  } catch (err) {
+    console.error(err);
+    setStatus("Export failed", true);
+  }
+}
+
+function formatExportMarkdown({ exerciseRows, nutritionRows, dailyRows, sleepRows, bodyRows }, from, to) {
+  const lines = [`# Fitness Log Export: ${from} to ${to}`, ""];
+
+  // Collect all unique dates across all data types
+  const allDates = [...new Set([
+    ...exerciseRows.map(r => r.date),
+    ...nutritionRows.map(r => r.date),
+    ...sleepRows.map(r => r.date),
+    ...bodyRows.map(r => r.date),
+  ])].sort();
+
+  // Index daily totals by date
+  const dailyByDate = Object.fromEntries(dailyRows.map(r => [r.date, r]));
+
+  for (const date of allDates) {
+    lines.push(`## ${date}`, "");
+
+    // ── Exercise ──
+    const exLogs = exerciseRows.filter(r => r.date === date);
+    if (exLogs.length) {
+      lines.push("### Exercise");
+      // Group rows by log_id
+      const byLog = new Map();
+      for (const r of exLogs) {
+        if (!byLog.has(r.log_id)) byLog.set(r.log_id, { name: r.exercise_name, tracking_type: r.tracking_type, sets: [] });
+        if (r.set_number != null) byLog.get(r.log_id).sets.push(r);
+      }
+      for (const { name, tracking_type, sets } of byLog.values()) {
+        const summary = sets.length ? summarizeSets(sets, tracking_type) : "logged";
+        lines.push(`- ${name} (${tracking_type}): ${summary}`);
+      }
+      lines.push("");
+    }
+
+    // ── Meals ──
+    const meals = nutritionRows.filter(r => r.date === date);
+    if (meals.length) {
+      lines.push("### Meals");
+      for (const m of meals) {
+        const cal  = round(m.calories  ?? 0, 0);
+        const pro  = round(m.protein   ?? 0, 1);
+        const carb = round(m.carbs     ?? 0, 1);
+        const fat  = round(m.fat       ?? 0, 1);
+        lines.push(`- ${m.meal_type.charAt(0).toUpperCase() + m.meal_type.slice(1)}: ${m.food_name} — ${cal} cal | ${pro}g protein | ${carb}g carbs | ${fat}g fat`);
+      }
+      const daily = dailyByDate[date];
+      if (daily) {
+        lines.push(`- **Daily Total: ${round(daily.calories ?? 0, 0)} cal | ${round(daily.protein ?? 0, 1)}g protein | ${round(daily.carbs ?? 0, 1)}g carbs | ${round(daily.fat ?? 0, 1)}g fat**`);
+      }
+      lines.push("");
+    }
+
+    // ── Sleep ──
+    const sleepEntry = sleepRows.find(r => r.date === date);
+    if (sleepEntry) {
+      lines.push("### Sleep");
+      lines.push(`- ${sleepEntry.hours} hours`);
+      lines.push("");
+    }
+
+    // ── Body ──
+    const bodyEntry = bodyRows.find(r => r.date === date);
+    if (bodyEntry) {
+      lines.push("### Body");
+      const parts = [];
+      if (bodyEntry.weight != null) parts.push(`Weight: ${bodyEntry.weight} lb`);
+      if (bodyEntry.waist  != null) parts.push(`Waist: ${bodyEntry.waist} in`);
+      if (parts.length) lines.push(`- ${parts.join(" | ")}`);
+      lines.push("");
+    }
+  }
+
+  if (!allDates.length) lines.push("No data found for this date range.", "");
+  return lines.join("\n");
 }
 
 async function handleDeleteButtons(event) {
