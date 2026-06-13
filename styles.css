@@ -663,6 +663,9 @@ select option { background: var(--panel-strong); color: var(--text); }
 .dot-point { cursor: crosshair; transition: r 0.1s; }
 .dot-point:hover { r: 7.5; }
 
+.bar-segment { cursor: default; transition: opacity 0.1s; }
+.bar-segment:hover { opacity: 0.8; }
+
 .dot-chart-wrap { position: relative; }
 .dot-tooltip {
   position: absolute;

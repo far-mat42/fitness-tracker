@@ -1629,22 +1629,19 @@ async function renderTrendsView() {
   const todayKey  = formatDateKey(new Date());
   const startDate = dateSpineStart(todayKey, trendDays);
 
-  const [nutRows, sleepRows, exRows, bodyRows] = await Promise.all([
-    dbQuery("SELECT date, calories, protein FROM daily_nutrition WHERE date >= ? AND date <= ? ORDER BY date", [startDate, todayKey]),
+  const [nutRows, sleepRows, bodyRows] = await Promise.all([
+    dbQuery("SELECT date, calories, protein, fat, carbs FROM daily_nutrition WHERE date >= ? AND date <= ? ORDER BY date", [startDate, todayKey]),
     dbQuery("SELECT date, hours FROM sleep_logs WHERE date >= ? AND date <= ? ORDER BY date", [startDate, todayKey]),
-    dbQuery("SELECT date, COUNT(*) AS count FROM exercise_logs WHERE date >= ? AND date <= ? GROUP BY date ORDER BY date", [startDate, todayKey]),
     dbQuery("SELECT date, weight, waist FROM body_measurements WHERE date >= ? AND date <= ? ORDER BY date", [startDate, todayKey])
   ]);
 
   const spine = buildDateSpine(startDate, todayKey);
 
   const charts = [
-    { label: "Calories",       color: "#f78166", rows: nutRows,   key: "calories", unit: " kcal" },
-    { label: "Protein (g)",    color: "#7ee787", rows: nutRows,   key: "protein",  unit: "g" },
-    { label: "Sleep (hours)",  color: "#79c0ff", rows: sleepRows, key: "hours",    unit: "h" },
-    { label: "Body Weight (lb)", color: "#e3b341", rows: bodyRows, key: "weight", unit: " lb" },
-    { label: "Waist (in)",     color: "#d2a8ff", rows: bodyRows,  key: "waist",   unit: " in" },
-    { label: "Exercise Count", color: "#58a6ff", rows: exRows,    key: "count",   unit: "" }
+    { label: "Calories",         color: "#f78166", rows: nutRows,   key: "calories", unit: " kcal" },
+    { label: "Sleep (hours)",    color: "#79c0ff", rows: sleepRows, key: "hours",    unit: "h" },
+    { label: "Body Weight (lb)", color: "#e3b341", rows: bodyRows,  key: "weight",   unit: " lb" },
+    { label: "Waist (in)",       color: "#d2a8ff", rows: bodyRows,  key: "waist",    unit: " in" },
   ];
 
   els.chartsGrid.innerHTML = "";
@@ -1658,6 +1655,26 @@ async function renderTrendsView() {
     els.chartsGrid.appendChild(card);
     renderLineChart(card.querySelector(`#${chartId}`), data, { color, unit });
   });
+
+  // Stacked macros bar chart
+  const macroCard = document.createElement("div");
+  macroCard.className = "chart-card";
+  macroCard.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.4rem">
+      <h3>Macros (g)</h3>
+      <div style="display:flex;gap:0.75rem;font-size:0.72rem">
+        <span style="color:#f78166">■ Carbs</span>
+        <span style="color:#7ee787">■ Protein</span>
+        <span style="color:#e3b341">■ Fat</span>
+      </div>
+    </div>
+    <div id="chart-macros"></div>`;
+  els.chartsGrid.appendChild(macroCard);
+  const macroData = spine.map(d => {
+    const row = nutRows.find(r => r.date === d);
+    return { date: d, carbs: row?.carbs ?? null, protein: row?.protein ?? null, fat: row?.fat ?? null };
+  });
+  renderStackedBarChart(macroCard.querySelector("#chart-macros"), macroData);
 
   await populateExerciseLibSelect();
   if (els.exerciseProgressSelect.value) {
@@ -1797,6 +1814,92 @@ function renderDotChart(container, rows, { isTime = false, isBodyweight = false 
   });
   svg.addEventListener("mouseout", e => {
     if (!e.target.closest(".dot-point")) return;
+    tooltip.style.display = "none";
+  });
+}
+
+// ─── Stacked bar chart (macros) ───────────────────────────────────────────────
+function renderStackedBarChart(container, points) {
+  // points: [{ date, carbs, protein, fat }]
+  const nonNull = points.filter(p => p.carbs !== null || p.protein !== null || p.fat !== null);
+  if (!nonNull.length) {
+    container.innerHTML = `<div class="chart-empty">No data for this period</div>`;
+    return;
+  }
+
+  const W = 480, H = 140;
+  const pad = { t: 14, r: 12, b: 28, l: 44 };
+  const cW  = W - pad.l - pad.r;
+  const cH  = H - pad.t - pad.b;
+  const N   = points.length;
+  const f   = n => n.toFixed(1);
+
+  const maxTotal = Math.max(...nonNull.map(p => (p.carbs ?? 0) + (p.protein ?? 0) + (p.fat ?? 0)), 1);
+  const sy = v => pad.t + cH - (v / maxTotal) * cH;
+
+  const slotW = cW / N;
+  const barW  = Math.max(2, slotW * 0.72);
+  const barX  = i => pad.l + i * slotW + (slotW - barW) / 2;
+
+  const yTicks = [0, 0.5, 1].map(t => {
+    const v = t * maxTotal, y = sy(v);
+    return `<line x1="${pad.l}" y1="${f(y)}" x2="${f(pad.l + cW)}" y2="${f(y)}" class="chart-grid"/>
+            <text x="${f(pad.l - 4)}" y="${f(y + 4)}" class="chart-tick" text-anchor="end">${round(v, 0)}</text>`;
+  }).join("");
+
+  const xCount = Math.min(5, N);
+  const xIdxs  = xCount <= 1 ? [0] : Array.from({ length: xCount }, (_, i) =>
+    Math.min(Math.round(i * (N - 1) / (xCount - 1)), N - 1));
+  const xTicks = [...new Set(xIdxs)].map(i =>
+    `<text x="${f(barX(i) + barW / 2)}" y="${H - 4}" class="chart-tick" text-anchor="middle">${points[i].date.slice(5).replace("-", "/")}</text>`
+  ).join("");
+
+  const COLORS = { carbs: "#f78166", protein: "#7ee787", fat: "#e3b341" };
+  const baseY  = pad.t + cH;
+
+  const bars = points.map((p, i) => {
+    if (p.carbs === null && p.protein === null && p.fat === null) return "";
+    const carbs = p.carbs ?? 0, protein = p.protein ?? 0, fat = p.fat ?? 0;
+    const total = carbs + protein + fat;
+    const x = barX(i);
+    const tip = `data-date="${p.date}" data-carbs="${round(carbs,1)}" data-protein="${round(protein,1)}" data-fat="${round(fat,1)}" data-total="${round(total,1)}"`;
+    let y = baseY;
+    return [["carbs", carbs], ["protein", protein], ["fat", fat]].map(([key, val]) => {
+      if (val <= 0) return "";
+      const h = (val / maxTotal) * cH;
+      y -= h;
+      return `<rect x="${f(x)}" y="${f(y)}" width="${f(barW)}" height="${f(h)}" fill="${COLORS[key]}" ${tip} class="bar-segment"/>`;
+    }).join("");
+  }).join("");
+
+  container.innerHTML = `
+    <div class="dot-chart-wrap" style="position:relative">
+      <svg viewBox="0 0 ${W} ${H}" class="line-chart">
+        ${yTicks}
+        <line x1="${pad.l}" y1="${pad.t}" x2="${pad.l}" y2="${f(pad.t + cH)}" class="chart-axis"/>
+        <line x1="${pad.l}" y1="${f(baseY)}" x2="${f(pad.l + cW)}" y2="${f(baseY)}" class="chart-axis"/>
+        ${bars}
+        ${xTicks}
+      </svg>
+      <div class="dot-tooltip" id="macroTooltip" style="display:none"></div>
+    </div>`;
+
+  const svg     = container.querySelector("svg");
+  const tooltip = container.querySelector("#macroTooltip");
+  svg.addEventListener("mouseover", e => {
+    const seg = e.target.closest(".bar-segment");
+    if (!seg) return;
+    const { date, carbs, protein, fat, total } = seg.dataset;
+    tooltip.innerHTML = `${date}<br>Carbs: ${carbs}g &nbsp;·&nbsp; Protein: ${protein}g &nbsp;·&nbsp; Fat: ${fat}g<br>Total: ${total}g`;
+    tooltip.style.display = "block";
+  });
+  svg.addEventListener("mousemove", e => {
+    const rect = container.getBoundingClientRect();
+    tooltip.style.left = `${e.clientX - rect.left + 12}px`;
+    tooltip.style.top  = `${e.clientY - rect.top  - 52}px`;
+  });
+  svg.addEventListener("mouseout", e => {
+    if (!e.target.closest(".bar-segment")) return;
     tooltip.style.display = "none";
   });
 }
