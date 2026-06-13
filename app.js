@@ -44,11 +44,31 @@ async function initApp() {
     setStatus("Connected");
     await dbRun(`
       INSERT INTO daily_nutrition (date, calories, protein, fat, carbs, meal_count, updated_at)
-      SELECT date,
-        COALESCE(SUM(calories), 0), COALESCE(SUM(protein), 0),
-        COALESCE(SUM(fat), 0),      COALESCE(SUM(carbs), 0),
+      SELECT nl.date,
+        COALESCE(SUM(CASE
+          WHEN nl.recipe_id IS NOT NULL AND nl.grams IS NOT NULL AND r.grams_per_serving IS NOT NULL
+            THEN r.calories * nl.grams / r.grams_per_serving
+          WHEN nl.recipe_id IS NOT NULL THEN r.calories * COALESCE(nl.servings, 1)
+          ELSE nl.calories END), 0),
+        COALESCE(SUM(CASE
+          WHEN nl.recipe_id IS NOT NULL AND nl.grams IS NOT NULL AND r.grams_per_serving IS NOT NULL
+            THEN r.protein * nl.grams / r.grams_per_serving
+          WHEN nl.recipe_id IS NOT NULL THEN r.protein * COALESCE(nl.servings, 1)
+          ELSE nl.protein END), 0),
+        COALESCE(SUM(CASE
+          WHEN nl.recipe_id IS NOT NULL AND nl.grams IS NOT NULL AND r.grams_per_serving IS NOT NULL
+            THEN r.fat * nl.grams / r.grams_per_serving
+          WHEN nl.recipe_id IS NOT NULL THEN r.fat * COALESCE(nl.servings, 1)
+          ELSE nl.fat END), 0),
+        COALESCE(SUM(CASE
+          WHEN nl.recipe_id IS NOT NULL AND nl.grams IS NOT NULL AND r.grams_per_serving IS NOT NULL
+            THEN r.carbs * nl.grams / r.grams_per_serving
+          WHEN nl.recipe_id IS NOT NULL THEN r.carbs * COALESCE(nl.servings, 1)
+          ELSE nl.carbs END), 0),
         COUNT(*), CURRENT_TIMESTAMP
-      FROM nutrition_logs GROUP BY date
+      FROM nutrition_logs nl
+      LEFT JOIN recipes r ON r.id = nl.recipe_id
+      GROUP BY nl.date
       ON CONFLICT(date) DO UPDATE SET
         calories   = excluded.calories,   protein    = excluded.protein,
         fat        = excluded.fat,        carbs      = excluded.carbs,
