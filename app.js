@@ -42,6 +42,17 @@ async function initApp() {
   try {
     await dbQuery("SELECT 1");
     setStatus("Connected");
+    await dbRun(`
+      INSERT INTO daily_nutrition (date, calories, protein, fat, carbs, meal_count, updated_at)
+      SELECT date,
+        COALESCE(SUM(calories), 0), COALESCE(SUM(protein), 0),
+        COALESCE(SUM(fat), 0),      COALESCE(SUM(carbs), 0),
+        COUNT(*), CURRENT_TIMESTAMP
+      FROM nutrition_logs GROUP BY date
+      ON CONFLICT(date) DO UPDATE SET
+        calories   = excluded.calories,   protein    = excluded.protein,
+        fat        = excluded.fat,        carbs      = excluded.carbs,
+        meal_count = excluded.meal_count, updated_at = excluded.updated_at`);
     await Promise.all([populateExerciseLibSelect(), refreshRecipeModal()]);
     await renderAll();
   } catch (err) {
