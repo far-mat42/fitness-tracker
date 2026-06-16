@@ -1832,26 +1832,22 @@ async function renderTrendsView() {
 
   const spine = buildDateSpine(startDate, todayKey);
 
-  const charts = [
-    { label: "Calories",         color: "#f78166", rows: nutRows,   key: "calories", unit: " kcal" },
-    { label: "Sleep (hours)",    color: "#79c0ff", rows: sleepRows, key: "hours",    unit: "h" },
-    { label: "Body Weight (lb)", color: "#e3b341", rows: bodyRows,  key: "weight",   unit: " lb" },
-    { label: "Waist (in)",       color: "#d2a8ff", rows: bodyRows,  key: "waist",    unit: " in" },
-  ];
-
   els.chartsGrid.innerHTML = "";
-  charts.forEach(({ label, color, rows, key, unit }) => {
+
+  const addLineCard = (label, key, color, unit, rows, fullWidth = false) => {
     const map  = Object.fromEntries(rows.map(r => [r.date, r[key] != null ? Number(r[key]) : null]));
     const data = spine.map(d => ({ date: d, value: map[d] ?? null }));
     const card = document.createElement("div");
-    card.className = "chart-card";
+    card.className = "chart-card" + (fullWidth ? " chart-full" : "");
     const chartId = `chart-${key}`;
     card.innerHTML = `<h3>${escapeHtml(label)}</h3><div id="${chartId}"></div>`;
     els.chartsGrid.appendChild(card);
     renderLineChart(card.querySelector(`#${chartId}`), data, { color, unit });
-  });
+  };
 
-  // Stacked macros bar chart
+  // Row 1: Calories | Macros
+  addLineCard("Calories", "calories", "#f78166", " kcal", nutRows);
+
   const macroCard = document.createElement("div");
   macroCard.className = "chart-card";
   macroCard.innerHTML = `
@@ -1870,6 +1866,13 @@ async function renderTrendsView() {
     return { date: d, carbs: row?.carbs ?? null, protein: row?.protein ?? null, fat: row?.fat ?? null };
   });
   renderStackedBarChart(macroCard.querySelector("#chart-macros"), macroData);
+
+  // Row 2: Body Weight | Waist
+  addLineCard("Body Weight (lb)", "weight", "#e3b341", " lb", bodyRows);
+  addLineCard("Waist (in)",       "waist",  "#d2a8ff", " in", bodyRows);
+
+  // Row 3: Sleep (full-width)
+  addLineCard("Sleep (hours)", "hours", "#79c0ff", "h", sleepRows, true);
 
   await populateExerciseLibSelect();
   if (els.exerciseProgressSelect.value) {
@@ -2150,7 +2153,6 @@ function renderLineChart(container, points, { color = "#58a6ff", unit = "", heig
 
   points.forEach((p, i) => {
     if (p.value !== null) seg.push({ x: sx(i), y: sy(p.value) });
-    else flushSeg();
   });
   flushSeg();
 
