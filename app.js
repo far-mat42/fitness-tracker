@@ -452,33 +452,9 @@ async function renderSelectedDate() {
   }
 
   // Summary cards
-  const daily    = nutrition || { calories: 0, protein: 0, fat: 0, carbs: 0, meal_count: 0 };
-  const totalSets = Object.values(setsMap).reduce((t, sets) => t + sets.length, 0);
-  const totalMins = Object.values(setsMap).reduce(
-    (t, sets) => t + sets.reduce((s, r) => s + (Number(r.duration_min) || 0), 0), 0
-  );
+  const daily = nutrition || { calories: 0, protein: 0, fat: 0, carbs: 0, meal_count: 0 };
 
-  els.summaryCards.innerHTML = `
-    <div class="summary-card">
-      <span>Nutrition</span>
-      <strong>${round(daily.calories, 0)} kcal</strong>
-      <small>${round(daily.protein, 1)}g protein</small>
-    </div>
-    <div class="summary-card">
-      <span>Sleep</span>
-      <strong>${sleep ? round(sleep.hours, 2) : "—"} h</strong>
-      <small>${sleep ? "Logged" : "Not logged"}</small>
-    </div>
-    <div class="summary-card">
-      <span>Exercise</span>
-      <strong>${exercises.length}</strong>
-      <small>${totalSets} sets${totalMins > 0 ? ` · ${round(totalMins, 0)} min` : ""}</small>
-    </div>
-    <div class="summary-card">
-      <span>Body</span>
-      <strong>${body && body.weight != null ? `${round(body.weight, 1)} lb` : "—"}</strong>
-      <small>${body && body.waist != null ? `${round(body.waist, 1)} in waist` : "No waist"}</small>
-    </div>`;
+  renderSummaryCards(daily, sleep, body);
 
   renderNutritionList(mealRows, daily);
   renderSleepList(sleep);
@@ -518,6 +494,123 @@ function renderNutritionList(rows, nutrition) {
 }
 
 function daily_val(n, k) { return Number(n?.[k]) || 0; }
+
+function renderSummaryCards(daily, sleep, body) {
+  const goal  = Number(localStorage.getItem("calorieGoal")) || 2000;
+  const cal   = daily_val(daily, "calories");
+  const pro   = daily_val(daily, "protein");
+  const fat   = daily_val(daily, "fat");
+  const carbs = daily_val(daily, "carbs");
+
+  // Calorie ring
+  const R = 30, circ = 2 * Math.PI * R;
+  const progress  = Math.min(1, goal > 0 ? cal / goal : 0);
+  const ringColor = cal > goal ? "var(--danger)" : "#f78166";
+  const calArc    = (progress * circ).toFixed(1);
+  const calGap    = ((1 - progress) * circ).toFixed(1);
+
+  const calRing = cal > 0
+    ? `<circle cx="40" cy="40" r="${R}" fill="none" stroke="${ringColor}"
+         stroke-width="7" stroke-linecap="round"
+         stroke-dasharray="${calArc} ${calGap}"
+         transform="rotate(-90 40 40)"/>`
+    : "";
+
+  // Macro donut — carbs (bottom), protein (middle), fat (top) matching trend chart colors
+  const macroTotal = carbs + pro + fat;
+  let macroArcs = "";
+  if (macroTotal > 0) {
+    const segs = [
+      { val: carbs, color: "#f78166" },
+      { val: pro,   color: "#7ee787" },
+      { val: fat,   color: "#e3b341" },
+    ].filter(s => s.val > 0);
+    const gap = segs.length > 1 ? 4 : 0;
+    let pos = 0;
+    macroArcs = segs.map(({ val, color }) => {
+      const len    = Math.max(0, (val / macroTotal) * circ - gap);
+      const offset = (-pos).toFixed(1);
+      pos += (val / macroTotal) * circ;
+      return `<circle cx="40" cy="40" r="${R}" fill="none" stroke="${color}"
+        stroke-width="7" stroke-linecap="butt"
+        stroke-dasharray="${len.toFixed(1)} ${(circ - len).toFixed(1)}"
+        stroke-dashoffset="${offset}"
+        transform="rotate(-90 40 40)"/>`;
+    }).join("");
+  }
+
+  els.summaryCards.innerHTML = `
+    <div class="summary-card summary-card--ring" id="calorieCard">
+      <div class="ring-header">
+        <span>Calories</span>
+        <button class="ring-goal-btn" title="Set calorie goal">✏</button>
+      </div>
+      <div class="ring-wrap">
+        <svg viewBox="0 0 80 80" class="ring-svg">
+          <circle cx="40" cy="40" r="${R}" fill="none" stroke="var(--border)" stroke-width="7"/>
+          ${calRing}
+        </svg>
+        <div class="ring-center">
+          <strong>${round(cal, 0)}</strong>
+          <small>/ ${goal} kcal</small>
+        </div>
+      </div>
+    </div>
+    <div class="summary-card summary-card--ring">
+      <span>Macros</span>
+      <div class="ring-wrap">
+        <svg viewBox="0 0 80 80" class="ring-svg">
+          <circle cx="40" cy="40" r="${R}" fill="none" stroke="var(--border)" stroke-width="7"/>
+          ${macroArcs}
+        </svg>
+        <div class="ring-center">
+          ${macroTotal > 0
+            ? `<strong>${round(pro, 0)}g</strong><small>protein</small>`
+            : `<small style="color:var(--muted)">—</small>`}
+        </div>
+      </div>
+    </div>
+    <div class="summary-card">
+      <span>Sleep</span>
+      <strong>${sleep ? round(sleep.hours, 1) : "—"} h</strong>
+      <small>${sleep ? "Logged" : "Not logged"}</small>
+    </div>
+    <div class="summary-card">
+      <span>Body</span>
+      <strong>${body && body.weight != null ? `${round(body.weight, 1)} lb` : "—"}</strong>
+      <small>${body && body.waist != null ? `${round(body.waist, 1)} in waist` : "No waist"}</small>
+    </div>`;
+
+  // Goal popover
+  const goalBtn    = els.summaryCards.querySelector(".ring-goal-btn");
+  const calorieCard = els.summaryCards.querySelector("#calorieCard");
+  goalBtn.addEventListener("click", e => {
+    e.stopPropagation();
+    document.querySelector(".goal-popover")?.remove();
+    const pop = document.createElement("div");
+    pop.className = "goal-popover";
+    pop.innerHTML = `
+      <input type="number" id="goalInput" min="500" max="10000" step="50" value="${goal}" />
+      <button id="goalSaveBtn" class="secondary">Save</button>`;
+    calorieCard.appendChild(pop);
+    pop.querySelector("#goalInput").select();
+    pop.querySelector("#goalSaveBtn").addEventListener("click", () => {
+      const val = Number(pop.querySelector("#goalInput").value);
+      if (val >= 500) {
+        localStorage.setItem("calorieGoal", String(val));
+        pop.remove();
+        renderSummaryCards(daily, sleep, body);
+      }
+    });
+    const dismiss = ev => {
+      if (!pop.contains(ev.target) && ev.target !== goalBtn) {
+        pop.remove();
+        document.removeEventListener("click", dismiss);
+      }
+    };
+    document.addEventListener("click", dismiss);
+  });
+}
 
 function renderSleepList(sleep) {
   if (!sleep) {
