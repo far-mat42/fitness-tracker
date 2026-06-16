@@ -1,4 +1,6 @@
 :root {
+  font-size: 18px;
+
   --bg:           #0a0a0a;
   --panel:        #111111;
   --panel-strong: #1a1a1a;
@@ -793,7 +795,7 @@ select option { background: var(--panel-strong); color: var(--text); }
 
 .chart-axis { stroke: var(--border); stroke-width: 1; }
 .chart-grid { stroke: var(--border); stroke-width: 0.5; stroke-dasharray: 3 3; }
-.chart-tick { fill: var(--muted); font-size: 10px; font-family: inherit; }
+.chart-tick { fill: var(--muted); font-size: 12px; font-family: inherit; }
 
 .chart-empty {
   color: var(--muted);
