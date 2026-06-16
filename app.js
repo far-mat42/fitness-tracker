@@ -20,7 +20,6 @@ let nutritionByWeight = false;
 
 // Recipe edit state
 let editingRecipeId = null; // null = add mode, number = editing that recipe's id
-let calorieGoal = 2000;
 
 const els = {};
 
@@ -43,8 +42,6 @@ async function initApp() {
   try {
     await dbQuery("SELECT 1");
     setStatus("Connected");
-    const goalRow = await dbOne("SELECT value FROM settings WHERE key = 'calorie_goal'");
-    if (goalRow?.value) calorieGoal = Number(goalRow.value);
     await dbRun(`
       INSERT INTO daily_nutrition (date, calories, protein, fat, carbs, meal_count, updated_at)
       SELECT nl.date,
@@ -426,7 +423,7 @@ async function renderSelectedDate() {
   });
   els.selectedDateHeading.textContent = prettyDate;
 
-  const [nutrition, sleep, mealRows, exercises, body] = await Promise.all([
+  const [nutrition, sleep, mealRows, exercises, body, goalRow] = await Promise.all([
     dbOne("SELECT * FROM daily_nutrition WHERE date = ?", [selectedDate]),
     dbOne("SELECT * FROM sleep_logs WHERE date = ?", [selectedDate]),
     dbQuery(`SELECT nl.*, r.name AS recipe_name, r.weight_unit
@@ -440,8 +437,13 @@ async function renderSelectedDate() {
              LEFT JOIN exercises e ON e.id = el.exercise_id
              WHERE el.date = ?
              ORDER BY el.created_at, el.id`, [selectedDate]),
-    dbOne("SELECT * FROM body_measurements WHERE date = ?", [selectedDate])
+    dbOne("SELECT * FROM body_measurements WHERE date = ?", [selectedDate]),
+    dbOne(
+      "SELECT goal FROM calorie_goals WHERE effective_from <= ? ORDER BY effective_from DESC LIMIT 1",
+      [selectedDate]
+    )
   ]);
+  const dailyGoal = goalRow ? Number(goalRow.goal) : 2000;
 
   // Fetch per-set data for exercise logs
   let setsMap = {};
@@ -457,7 +459,7 @@ async function renderSelectedDate() {
   // Summary cards
   const daily = nutrition || { calories: 0, protein: 0, fat: 0, carbs: 0, meal_count: 0 };
 
-  renderSummaryCards(daily, sleep, body);
+  renderSummaryCards(daily, sleep, body, dailyGoal);
 
   renderNutritionList(mealRows, daily);
   renderSleepList(sleep);
@@ -539,8 +541,7 @@ function renderNutritionList(rows, nutrition) {
 
 function daily_val(n, k) { return Number(n?.[k]) || 0; }
 
-function renderSummaryCards(daily, sleep, body) {
-  const goal  = calorieGoal;
+function renderSummaryCards(daily, sleep, body, goal = 2000) {
   const cal   = daily_val(daily, "calories");
   const pro   = daily_val(daily, "protein");
   const fat   = daily_val(daily, "fat");
@@ -663,13 +664,13 @@ function renderSummaryCards(daily, sleep, body) {
     pop.querySelector("#goalSaveBtn").addEventListener("click", async () => {
       const val = Number(pop.querySelector("#goalInput").value);
       if (val >= 500) {
-        calorieGoal = val;
+        const todayStr = formatDateKey(new Date());
         await dbRun(
-          "INSERT INTO settings (key, value) VALUES ('calorie_goal', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-          [String(val)]
+          "INSERT INTO calorie_goals (effective_from, goal) VALUES (?, ?) ON CONFLICT(effective_from) DO UPDATE SET goal = excluded.goal",
+          [todayStr, val]
         );
         pop.remove();
-        renderSummaryCards(daily, sleep, body);
+        renderSummaryCards(daily, sleep, body, val);
       }
     });
     const dismiss = ev => {
