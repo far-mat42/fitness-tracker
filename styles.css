@@ -653,6 +653,61 @@ select option { background: var(--panel-strong); color: var(--text); }
 .record-meta { font-size: 0.8rem; }
 .record-meta.sets-summary { color: var(--text); font-variant-numeric: tabular-nums; }
 
+/* ── Meal groups (collapsible) ───────────────────────────────── */
+.meal-group {
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  background: var(--panel-strong);
+  overflow: hidden;
+}
+
+.meal-group-summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 0.8rem;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+.meal-group-summary::-webkit-details-marker { display: none; }
+.meal-group-summary::marker { display: none; }
+
+.meal-group-summary::before {
+  content: "▶";
+  font-size: 0.6rem;
+  color: var(--muted);
+  flex-shrink: 0;
+  transition: transform 0.15s;
+  margin-right: 0.3rem;
+}
+.meal-group[open] > .meal-group-summary::before { transform: rotate(90deg); }
+.meal-group[open] > .meal-group-summary { border-bottom: 1px solid var(--border); }
+
+.meal-group-name {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.meal-group-meta {
+  font-size: 0.74rem;
+  color: var(--muted);
+  text-align: right;
+  flex: 1;
+}
+
+.meal-group-items { display: grid; }
+
+.meal-group-item {
+  border: none;
+  border-radius: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+}
+.meal-group-item:last-child { border-bottom: none; }
+
 /* ── Trends view ─────────────────────────────────────────────── */
 .trends-layout {
   display: flex;

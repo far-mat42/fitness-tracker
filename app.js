@@ -470,27 +470,68 @@ function renderNutritionList(rows, nutrition) {
     els.nutritionList.innerHTML = `<div class="empty-state">No meals logged for this day yet.</div>`;
     return;
   }
-  const records = rows.map(row => {
-    const name = row.recipe_name || row.custom_name || "Meal";
-    const unit = row.weight_unit || "g";
-    const qty  = row.grams != null
-      ? `${round(row.grams, 1)} ${unit}`
-      : `${round(row.servings, 2)} serving(s)`;
-    return `<article class="record">
-      <div>
-        <h4>${escapeHtml(capitalize(row.meal_type))}: ${escapeHtml(name)}</h4>
-        <p class="record-meta">${qty} · ${round(row.calories, 0)} kcal · ${round(row.protein, 1)}g P · ${round(row.fat, 1)}g F · ${round(row.carbs, 1)}g C</p>
-      </div>
-      <button class="icon-danger" type="button" data-delete="nutrition" data-id="${row.id}">Delete</button>
-    </article>`;
-  }).join("");
+
+  const MEAL_ORDER = ["breakfast", "lunch", "dinner", "snack"];
+
+  // Group rows by meal_type, preserving canonical order
+  const groups = new Map();
+  MEAL_ORDER.forEach(t => groups.set(t, []));
+  rows.forEach(row => {
+    const key = row.meal_type?.toLowerCase();
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(row);
+  });
+
+  const macroStr = (cal, pro, fat, carbs) =>
+    `${round(cal, 0)} kcal · ${round(pro, 1)}g P · ${round(fat, 1)}g F · ${round(carbs, 1)}g C`;
+
+  const groupHtml = [...groups.entries()]
+    .filter(([, items]) => items.length > 0)
+    .map(([type, items]) => {
+      const totals = items.reduce((acc, r) => ({
+        cal:   acc.cal   + (Number(r.calories) || 0),
+        pro:   acc.pro   + (Number(r.protein)  || 0),
+        fat:   acc.fat   + (Number(r.fat)      || 0),
+        carbs: acc.carbs + (Number(r.carbs)    || 0),
+      }), { cal: 0, pro: 0, fat: 0, carbs: 0 });
+
+      const itemsHtml = items.map(row => {
+        const name = row.recipe_name || row.custom_name || "Meal";
+        const unit = row.weight_unit || "g";
+        const qty  = row.grams != null
+          ? `${round(row.grams, 1)} ${unit}`
+          : `${round(row.servings, 2)} serving(s)`;
+        return `<article class="record meal-group-item">
+          <div>
+            <h4>${escapeHtml(name)}</h4>
+            <p class="record-meta">${qty} · ${macroStr(row.calories, row.protein, row.fat, row.carbs)}</p>
+          </div>
+          <button class="icon-danger" type="button" data-delete="nutrition" data-id="${row.id}">Delete</button>
+        </article>`;
+      }).join("");
+
+      return `<details class="meal-group">
+        <summary class="meal-group-summary">
+          <span class="meal-group-name">${capitalize(type)}</span>
+          <span class="meal-group-meta">${items.length} item${items.length !== 1 ? "s" : ""} · ${macroStr(totals.cal, totals.pro, totals.fat, totals.carbs)}</span>
+        </summary>
+        <div class="meal-group-items">${itemsHtml}</div>
+      </details>`;
+    }).join("");
+
+  const dailyMeta = macroStr(
+    daily_val(nutrition, "calories"), daily_val(nutrition, "protein"),
+    daily_val(nutrition, "fat"),      daily_val(nutrition, "carbs")
+  );
+
   els.nutritionList.innerHTML = `
     <div class="record">
       <div>
         <h4>Daily total</h4>
-        <p class="record-meta">${round(daily_val(nutrition, "calories"), 0)} kcal · ${round(daily_val(nutrition, "protein"), 1)}g P · ${round(daily_val(nutrition, "fat"), 1)}g F · ${round(daily_val(nutrition, "carbs"), 1)}g C · ${nutrition.meal_count} meal(s)</p>
+        <p class="record-meta">${dailyMeta} · ${nutrition.meal_count} meal(s)</p>
       </div>
-    </div>${records}`;
+    </div>
+    ${groupHtml}`;
 }
 
 function daily_val(n, k) { return Number(n?.[k]) || 0; }
