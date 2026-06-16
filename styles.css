@@ -719,6 +719,8 @@ select option { background: var(--panel-strong); color: var(--text); }
 .bar-segment { cursor: default; transition: opacity 0.1s; }
 .bar-segment:hover { opacity: 0.8; }
 
+.macro-seg { cursor: default; transition: stroke-width 0.12s; }
+
 .dot-chart-wrap { position: relative; }
 .dot-tooltip {
   position: absolute;

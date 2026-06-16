@@ -516,18 +516,18 @@ function renderSummaryCards(daily, sleep, body) {
          transform="rotate(-90 40 40)"/>`
     : "";
 
-  // Macro donut — carbs (bottom), protein (middle), fat (top) matching trend chart colors
+  // Macro donut — carbs, protein, fat matching trend chart colors
   const macroTotal = carbs + pro + fat;
   let macroArcs = "";
+  const macroSegs = [
+    { val: carbs, color: "#f78166", label: "carbs" },
+    { val: pro,   color: "#7ee787", label: "protein" },
+    { val: fat,   color: "#e3b341", label: "fat" },
+  ].filter(s => s.val > 0);
   if (macroTotal > 0) {
-    const segs = [
-      { val: carbs, color: "#f78166" },
-      { val: pro,   color: "#7ee787" },
-      { val: fat,   color: "#e3b341" },
-    ].filter(s => s.val > 0);
-    const gap = segs.length > 1 ? 4 : 0;
+    const gap = macroSegs.length > 1 ? 4 : 0;
     let pos = 0;
-    macroArcs = segs.map(({ val, color }) => {
+    macroArcs = macroSegs.map(({ val, color, label }) => {
       const len    = Math.max(0, (val / macroTotal) * circ - gap);
       const offset = (-pos).toFixed(1);
       pos += (val / macroTotal) * circ;
@@ -535,7 +535,8 @@ function renderSummaryCards(daily, sleep, body) {
         stroke-width="7" stroke-linecap="butt"
         stroke-dasharray="${len.toFixed(1)} ${(circ - len).toFixed(1)}"
         stroke-dashoffset="${offset}"
-        transform="rotate(-90 40 40)"/>`;
+        transform="rotate(-90 40 40)"
+        class="macro-seg" data-label="${label}" data-val="${round(val, 1)}"/>`;
     }).join("");
   }
 
@@ -580,6 +581,27 @@ function renderSummaryCards(daily, sleep, body) {
       <strong>${body && body.weight != null ? `${round(body.weight, 1)} lb` : "—"}</strong>
       <small>${body && body.waist != null ? `${round(body.waist, 1)} in waist` : "No waist"}</small>
     </div>`;
+
+  // Macro donut hover interaction
+  if (macroTotal > 0) {
+    const macroCard   = els.summaryCards.querySelectorAll(".summary-card--ring")[1];
+    const macroSvg    = macroCard.querySelector(".ring-svg");
+    const macroCenter = macroCard.querySelector(".ring-center");
+    const defaultCenter = `<strong>${round(pro, 0)}g</strong><small>protein</small>`;
+
+    macroSvg.addEventListener("mouseover", e => {
+      const seg = e.target.closest(".macro-seg");
+      if (!seg) return;
+      macroSvg.querySelectorAll(".macro-seg").forEach(s => s.setAttribute("stroke-width", "7"));
+      seg.setAttribute("stroke-width", "10");
+      macroCenter.innerHTML = `<strong>${seg.dataset.val}g</strong><small>${seg.dataset.label}</small>`;
+    });
+
+    macroSvg.addEventListener("mouseleave", () => {
+      macroSvg.querySelectorAll(".macro-seg").forEach(s => s.setAttribute("stroke-width", "7"));
+      macroCenter.innerHTML = defaultCenter;
+    });
+  }
 
   // Goal popover
   const goalBtn    = els.summaryCards.querySelector(".ring-goal-btn");
