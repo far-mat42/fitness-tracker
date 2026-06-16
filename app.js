@@ -20,6 +20,7 @@ let nutritionByWeight = false;
 
 // Recipe edit state
 let editingRecipeId = null; // null = add mode, number = editing that recipe's id
+let calorieGoal = 2000;
 
 const els = {};
 
@@ -42,6 +43,8 @@ async function initApp() {
   try {
     await dbQuery("SELECT 1");
     setStatus("Connected");
+    const goalRow = await dbOne("SELECT value FROM settings WHERE key = 'calorie_goal'");
+    if (goalRow?.value) calorieGoal = Number(goalRow.value);
     await dbRun(`
       INSERT INTO daily_nutrition (date, calories, protein, fat, carbs, meal_count, updated_at)
       SELECT nl.date,
@@ -537,7 +540,7 @@ function renderNutritionList(rows, nutrition) {
 function daily_val(n, k) { return Number(n?.[k]) || 0; }
 
 function renderSummaryCards(daily, sleep, body) {
-  const goal  = Number(localStorage.getItem("calorieGoal")) || 2000;
+  const goal  = calorieGoal;
   const cal   = daily_val(daily, "calories");
   const pro   = daily_val(daily, "protein");
   const fat   = daily_val(daily, "fat");
@@ -657,10 +660,14 @@ function renderSummaryCards(daily, sleep, body) {
       <button id="goalSaveBtn" class="secondary">Save</button>`;
     calorieCard.appendChild(pop);
     pop.querySelector("#goalInput").select();
-    pop.querySelector("#goalSaveBtn").addEventListener("click", () => {
+    pop.querySelector("#goalSaveBtn").addEventListener("click", async () => {
       const val = Number(pop.querySelector("#goalInput").value);
       if (val >= 500) {
-        localStorage.setItem("calorieGoal", String(val));
+        calorieGoal = val;
+        await dbRun(
+          "INSERT INTO settings (key, value) VALUES ('calorie_goal', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+          [String(val)]
+        );
         pop.remove();
         renderSummaryCards(daily, sleep, body);
       }
