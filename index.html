@@ -78,14 +78,15 @@
           <h3 id="nutritionHeading">Add meal</h3>
           <form id="nutritionForm" class="grid-form">
 
-            <label>Meal type
-              <select id="mealType">
-                <option value="breakfast">Breakfast</option>
-                <option value="lunch">Lunch</option>
-                <option value="dinner">Dinner</option>
-                <option value="snack">Snack</option>
-              </select>
-            </label>
+            <div class="full-width">
+              <span class="radio-group-label">Meal type</span>
+              <div id="mealType" class="radio-group">
+                <label class="radio-btn"><input type="radio" name="mealType" value="breakfast" checked /> Breakfast</label>
+                <label class="radio-btn"><input type="radio" name="mealType" value="lunch" /> Lunch</label>
+                <label class="radio-btn"><input type="radio" name="mealType" value="dinner" /> Dinner</label>
+                <label class="radio-btn"><input type="radio" name="mealType" value="snack" /> Snack</label>
+              </div>
+            </div>
 
             <label class="checkbox-label">
               <input type="checkbox" id="nutritionIsCustom" />

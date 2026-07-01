@@ -875,17 +875,24 @@ async function populateExerciseLibSelect() {
 }
 
 // ─── Nutrition form helpers ───────────────────────────────────────────────────
+function getMealType() {
+  return els.mealType.querySelector("input[name='mealType']:checked")?.value || "breakfast";
+}
+
+function setMealType(val) {
+  const radio = els.mealType.querySelector(`input[name='mealType'][value="${val}"]`);
+  if (radio) radio.checked = true;
+}
+
 function nutritionIsCustomToggle() {
   const isCustom = els.nutritionIsCustom.checked;
   els.nutritionRecipeSection.style.display = isCustom ? "none" : "";
   els.nutritionCustomSection.style.display = isCustom ? ""     : "none";
   // Reset quantity toggle and recipe selection
   if (isCustom) els.recipeSearchable.clear();
-  selectedRecipe   = null;
-  nutritionByWeight = false;
+  selectedRecipe = null;
+  setNutritionQtyMode(false);
   els.nutritionQtyToggle.style.display = "none";
-  els.nutritionServingsRow.style.display = "";
-  els.nutritionGramsRow.style.display    = "none";
   els.qtyGramsBtn.textContent = "Grams";
   els.nutritionWeightUnitLabel.textContent = "Grams";
 }
@@ -893,11 +900,9 @@ function nutritionIsCustomToggle() {
 async function onRecipeChange() {
   const id = nullableInt(els.recipeSelect.value);
   if (!id) {
-    selectedRecipe   = null;
-    nutritionByWeight = false;
-    els.nutritionQtyToggle.style.display   = "none";
-    els.nutritionServingsRow.style.display = "";
-    els.nutritionGramsRow.style.display    = "none";
+    selectedRecipe = null;
+    setNutritionQtyMode(false);
+    els.nutritionQtyToggle.style.display = "none";
     return;
   }
   try {
@@ -909,10 +914,9 @@ async function onRecipeChange() {
       const label = unit === "ml" ? "Millilitres" : "Grams";
       els.qtyGramsBtn.textContent = unit;
       els.nutritionWeightUnitLabel.textContent = label;
+      setNutritionQtyMode(false);
     } else {
-      nutritionByWeight = false;
-      els.nutritionServingsRow.style.display = "";
-      els.nutritionGramsRow.style.display    = "none";
+      setNutritionQtyMode(false);
       els.qtyGramsBtn.textContent = "Grams";
       els.nutritionWeightUnitLabel.textContent = "Grams";
     }
@@ -1098,22 +1102,23 @@ async function handleNutritionSubmit(event) {
     carbs    = recipe.carbs    * servings;
   }
 
+  const lastMealType = getMealType();
+
   try {
     await dbRun(
       `INSERT INTO nutrition_logs (date, meal_type, recipe_id, custom_name, servings, grams, calories, protein, fat, carbs)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [selectedDate, els.mealType.value, recipeId, customName,
+      [selectedDate, lastMealType, recipeId, customName,
        servings, grams, calories, protein, fat, carbs]
     );
     await recalculateDailyNutrition(selectedDate);
     // Reset form
     els.nutritionForm.reset();
+    setMealType(lastMealType);
     els.recipeSearchable.clear();
-    selectedRecipe   = null;
-    nutritionByWeight = false;
-    els.nutritionQtyToggle.style.display   = "none";
-    els.nutritionServingsRow.style.display = "";
-    els.nutritionGramsRow.style.display    = "none";
+    selectedRecipe = null;
+    setNutritionQtyMode(false);
+    els.nutritionQtyToggle.style.display = "none";
     els.nutritionRecipeSection.style.display = "";
     els.nutritionCustomSection.style.display = "none";
     els.servings.value = "1";
